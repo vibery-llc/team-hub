@@ -22,3 +22,14 @@ customer data, raw logs, or secrets. The owner label is the minimum approved
 attribution, not permission to include any other personal information. Humans
 remain accountable for decisions and external actions; an activity entry never
 records an agent as the decision-maker.
+
+## Usage stats attribution
+
+The hub always records anonymous aggregate usage counts (page opens, agent
+launches) — that needs no opt-in and an agent doesn't need to do anything
+about it. Per-person attribution is different: it names which teammate did
+what, and turning it on is a tenant policy decision, not an agent's to make.
+
+An agent must not set `usageStats.attribution.enabled` to `true` or name its
+`owner` in `site/hub.config.js`. Only make that change after a human
+explicitly asks for per-person attribution to be turned on.

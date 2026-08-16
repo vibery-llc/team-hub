@@ -106,6 +106,25 @@ globalThis.HUB_CONFIG = {
     dataFile: "activity.json",
   },
 
+  /* Usage stats — whether the hub is actually opened and used, beyond the
+     person who set it up. Recording anonymous aggregate counts (page opens,
+     agent launches) is a product default and needs no opt-in; this block
+     controls only PER-PERSON ATTRIBUTION, which is a tenant policy decision,
+     never an agent's to make.
+
+     Leave `attribution.enabled` false and the dashboard's Usage panel shows
+     totals with no identity attached anywhere. Set it to true AND name the
+     human accountable for that decision, and the server additionally
+     attaches the Cloudflare Access-verified email to each event — the
+     dashboard then visibly says attribution is on, so teammates read about
+     it rather than discover it. See README, "Usage stats". */
+  usageStats: {
+    attribution: {
+      enabled: false,
+      owner: "",
+    },
+  },
+
   /* Extra agent launchers, beyond the built-in Claude Code / Claude desktop /
      Claude in VS Code / Codex / Copy prompt. Use this for a tool specific to
      your stack rather than editing hub.js — an edit there is a merge conflict

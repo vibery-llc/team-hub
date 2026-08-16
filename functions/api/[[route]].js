@@ -21,6 +21,9 @@
  *   PUT    /api/mpu/part?key&uploadId&part   -> { partNumber, etag }
  *   POST   /api/mpu/complete?key&uploadId    body: { parts: [...] }
  *   DELETE /api/mpu/abort?key&uploadId
+ *
+ *   POST   /api/event                        record one usage event (fire-and-forget)
+ *   GET    /api/stats                        aggregate usage counts, last 30 days
  */
 
 /** Top-level prefixes the API will touch. Anything else is rejected. */
@@ -29,12 +32,23 @@ const AREAS = ["share", "builds", "meetings", "clips"];
 /** Single-shot uploads stay well under the Pages request-body ceiling. */
 const SINGLE_SHOT_MAX = 90 * 1024 * 1024;
 
-const json = (body, status = 200) =>
+/**
+ * Usage events: whether the hub is actually opened and used, not what was
+ * done in it. A small allowlist on purpose — this is a usage counter, not a
+ * place to accumulate free-form telemetry.
+ */
+export const EVENT_TYPES = new Set(["page_view", "agent_launch"]);
+
+/** How many days of usage events the stats route rolls up. */
+export const STATS_WINDOW_DAYS = 30;
+
+const json = (body, status = 200, headers = {}) =>
   new Response(JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
+      ...headers,
     },
   });
 
@@ -77,6 +91,70 @@ function identity(request) {
   );
 }
 
+/** Single-line, length-capped text. Never throws — a malformed field is
+ * truncated/blanked rather than failing the whole fire-and-forget request. */
+export function cleanText(raw, max) {
+  return String(raw ?? "").replace(/[\r\n\t]+/g, " ").trim().slice(0, max);
+}
+
+/**
+ * Builds the record stored for one usage event. `getIdentity` is only ever
+ * called when the caller explicitly asked to attribute — see hub.config.js
+ * `usageStats.attribution` — and even then the identity value comes from
+ * that callback (the Access-verified header), never from `body`. A tenant
+ * with attribution off never has this callback invoked, so no identity is
+ * read, let alone stored.
+ */
+export function buildUsageEvent(body, getIdentity, now = new Date()) {
+  const type = cleanText(body?.type, 32);
+  if (!EVENT_TYPES.has(type)) {
+    throw new Error(`type must be one of: ${[...EVENT_TYPES].join(", ")}`);
+  }
+  const event = {
+    type,
+    label: cleanText(body?.label, 80),
+    source: cleanText(body?.source, 120),
+    timestamp: now.toISOString(),
+  };
+  if (body?.attribute === true) event.email = getIdentity();
+  return event;
+}
+
+/** Rolls a list of stored event records up into the shape the dashboard's
+ * Usage panel renders. Pure and R2-agnostic so it is unit-testable without a
+ * bucket — the stats route just supplies the customMetadata it listed. */
+export function summarizeEvents(records, windowDays) {
+  const byType = {};
+  const byPerson = {};
+  let totalEvents = 0;
+  let attributed = false;
+
+  for (const event of records) {
+    totalEvents++;
+    const type = event?.type || "unknown";
+    byType[type] = (byType[type] || 0) + 1;
+    if (event?.email) {
+      attributed = true;
+      byPerson[event.email] = (byPerson[event.email] || 0) + 1;
+    }
+  }
+
+  return {
+    windowDays,
+    totalEvents,
+    byType,
+    // Reported from what was actually written, not from config — so this can
+    // never drift from what the hub is really recording.
+    attributed,
+    byPerson: attributed
+      ? Object.entries(byPerson)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 20)
+          .map(([email, count]) => ({ email, count }))
+      : [],
+  };
+}
+
 function describe(obj) {
   const key = obj.key;
   const name = key.slice(key.lastIndexOf("/") + 1);
@@ -110,6 +188,49 @@ export async function onRequest(context) {
 
   try {
     if (route === "whoami") return json({ email: identity(request) });
+
+    // ---- usage events --------------------------------------------------------
+    if (route === "event" && method === "POST") {
+      let body;
+      try { body = await request.json(); } catch { return bad("bad json"); }
+
+      let event;
+      try { event = buildUsageEvent(body, () => identity(request)); }
+      catch (err) { return bad(err.message); }
+
+      const day = event.timestamp.slice(0, 10);
+      const key = `usage/${day}/${event.timestamp.replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}.json`;
+      await bucket.put(key, JSON.stringify(event), {
+        httpMetadata: { contentType: "application/json" },
+        // Mirrored into customMetadata so /api/stats can aggregate from
+        // bucket.list() alone — no need to GET every event body back.
+        customMetadata: event,
+      });
+      return json({ ok: true }, 201);
+    }
+
+    if (route === "stats" && method === "GET") {
+      const records = [];
+      const today = new Date();
+      // Dated prefixes on the way in are what make this bounded: rather than
+      // scanning the whole usage/ history, list only the last N day-prefixes.
+      for (let i = 0; i < STATS_WINDOW_DAYS; i++) {
+        const day = new Date(today);
+        day.setUTCDate(day.getUTCDate() - i);
+        const prefix = `usage/${day.toISOString().slice(0, 10)}/`;
+        let cursor;
+        do {
+          const page = await bucket.list({ prefix, cursor, limit: 1000, include: ["customMetadata"] });
+          for (const o of page.objects) records.push(o.customMetadata || {});
+          cursor = page.truncated ? page.cursor : undefined;
+        } while (cursor);
+      }
+      // Rough aggregate counts, not a live dial — cache briefly so a busy
+      // dashboard doesn't re-list 30 days of prefixes on every page load.
+      return json(summarizeEvents(records, STATS_WINDOW_DAYS), 200, {
+        "cache-control": "private, max-age=300",
+      });
+    }
 
     // ---- listing -----------------------------------------------------------
     if (route === "files" && method === "GET") {

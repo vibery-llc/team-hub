@@ -305,6 +305,49 @@ is committed as a plain file. If updates are internal, keep the hub repository
 private and review the diff before pushing; history in a public repository is
 public even when the Pages site is behind Cloudflare Access.
 
+## Usage stats
+
+The dashboard's delivery activity says what shipped. It says nothing about
+whether the team actually opens the hub or uses the agent launcher — so
+there was no way to tell if anyone but the person who set it up ever had.
+
+`functions/api/` records a **usage event** (`page_view` from every page load,
+`agent_launch` from every click of an agent button) to R2 under a dated
+`usage/<YYYY-MM-DD>/` prefix, fire-and-forget from `site/hub.js` — a failed or
+slow event POST never blocks or delays the thing it is recording. The
+dashboard's Usage panel calls `GET /api/stats`, which rolls the last 30 days
+of events up into aggregate counts.
+
+**Two modes, and only one of them is a tenant's decision to make:**
+
+- **Anonymous aggregate counts — the default, no opt-in needed.** Every event
+  carries a type, a label, a source and a server-set timestamp. No identity of
+  any kind is recorded, attempted, or derivable. The dashboard shows totals:
+  how many opens, how many launches, over the last 30 days.
+- **Per-person attribution — opt-in, exactly like the activity log above.**
+  Setting `usageStats.attribution.enabled: true` in `site/hub.config.js`
+  **and** naming a human `owner` has the server additionally attach the
+  Cloudflare Access-verified email to each event — never a client-supplied
+  one; `functions/api/[[route]].js` reads it off the same
+  `Cf-Access-Authenticated-User-Email` header the file store already trusts
+  for uploads. Agents must never turn this on or name the owner — see
+  `AGENTS.md`. When it is on, the dashboard's Usage panel says so with a
+  visible callout instead of quietly starting to name names; that callout is
+  driven by what `/api/stats` actually finds in R2, not by echoing the config
+  flag, so it cannot drift from what the hub is really recording.
+
+```js
+usageStats: {
+  attribution: {
+    enabled: true,
+    owner: "Jordan Lee",
+  },
+},
+```
+
+Usage events accumulate in R2 like anything else the API writes — small JSON
+objects, cheap on the free tier — and nothing prunes them automatically today.
+
 ## Publishing a meeting
 
 1. Transcribe locally — audio never leaves the machine:

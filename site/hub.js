@@ -36,6 +36,34 @@
   const file = location.pathname.split("/").pop() || "index.html";
   const here = allNav.find((n) => n.href === file) || nav[0];
 
+  /* 0c. Usage events — anonymous by default.
+
+     Fire-and-forget POSTs to /api/event so a tenant can tell whether anyone
+     but the person who set the hub up ever opens it or launches an agent
+     from it. This never blocks: a slow, failing or 404ing endpoint (the
+     Function is undeployed, or a local `python3 -m http.server` with no
+     Functions at all — see CONTRIBUTING) must not delay a page or a launch,
+     so the promise is never awaited by callers and errors are swallowed.
+
+     Attribution is a tenant policy, not a product default — see README,
+     "Usage stats". Off unless a human sets usageStats.attribution.enabled in
+     hub.config.js, and even then this file never sends an identity: it only
+     signals the choice, and the server reads the real identity itself off
+     the Access header. */
+  const usageAttrib = CONFIG.usageStats?.attribution || {};
+  const USAGE_ATTRIBUTION = usageAttrib.enabled === true && Boolean(String(usageAttrib.owner || "").trim());
+  window.kfLogEvent = (type, label, source) => {
+    try {
+      fetch("/api/event", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type, label: label || "", source: source || "", attribute: USAGE_ATTRIBUTION }),
+        keepalive: true,
+      }).catch(() => { /* offline, undeployed, or blocked — never surfaced */ });
+    } catch (e) { /* fetch unavailable — never block the caller */ }
+  };
+  window.kfLogEvent("page_view", (here && here.label) || file, file);
+
   if (nav.length) {
     document.title = here.title || `${here.label} — ${CONFIG.siteName || ""}`.replace(/ — $/, "");
 
@@ -204,6 +232,10 @@
     if (!prompt) return "nothing to send";
     const launcher = LAUNCHERS.find((l) => l.id === currentLauncher())
       || LAUNCHERS[LAUNCHERS.length - 1];
+
+    // Fire-and-forget: never awaited, so a slow or failing event POST cannot
+    // delay the launch it is merely recording.
+    window.kfLogEvent("agent_launch", launcher.id, source || "");
 
     // Oversized prompts can't ride in a URL — degrade rather than truncate.
     if (!launcher.url || prompt.length > MAX_URL_PROMPT) {

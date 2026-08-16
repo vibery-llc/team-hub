@@ -22,6 +22,7 @@
   <a href="#s-start" data-needs-tracker>Start here</a>
   <a href="#s-timeline" data-needs-tracker>Timeline</a>
   <a href="#s-numbers">Numbers</a>
+  <a href="#s-usage">Usage</a>
   <a href="#s-shots">Screenshots</a>
   <a href="#s-plan" data-needs-phases>P0–P5</a>
   <a href="#s-prs">Open PRs</a>
@@ -87,6 +88,14 @@
 
 <h2 id="s-numbers">This week in numbers</h2>
 <div class="kpis" id="kpis"></div>
+
+<h2 id="s-usage">Hub usage · last 30 days</h2>
+<p class="lead">Whether the team is actually opening the hub and launching agents from it — anonymous by default.</p>
+<div id="usage-panel">
+  <div id="usage-attribution"></div>
+  <div class="kpis" id="usage-kpis"></div>
+  <div id="usage-by-person"></div>
+</div>
 
 <h2 id="s-shots">Latest from the build</h2>
 <p class="lead">Proof shots off the most recent PRs, newest first. Click any of them to open it full size — or see <a href="files.html#s-shots">the whole gallery</a>.</p>
@@ -350,6 +359,42 @@ async function renderAgentQueue(queue) {
     setTimeout(() => { b.textContent = was; b.classList.remove("btn--ok"); }, 1800);
   }));
 }
+
+/* ---- usage stats -----------------------------------------------------------
+   Independent of data.json: this calls the Function directly, so it only
+   renders where functions/api is deployed with the HUB_FILES binding. A
+   local `python3 -m http.server` (see CONTRIBUTING) or a preview missing the
+   binding has no such route — the panel says so rather than showing zeros,
+   which would misread as "nobody uses this" instead of "not available here". */
+fetch("/api/stats", { cache: "no-store" })
+  .then((r) => { if (!r.ok) throw new Error(`stats returned ${r.status}`); return r.json(); })
+  .then((d) => {
+    document.getElementById("usage-attribution").innerHTML = d.attributed
+      ? `<div class="callout callout--amber"><strong>Per-person attribution is on.</strong> Events below are recorded against the Cloudflare Access-verified email of whoever triggered them — a tenant policy set in <code>hub.config.js</code>, not a product default.</div>`
+      : `<div class="callout callout--water"><strong>Anonymous aggregate counts only.</strong> No identity is recorded with these events.</div>`;
+
+    setHTML("usage-kpis", [
+      { v: d.totalEvents || 0, l: `events · ${d.windowDays}d`, s: "opens + agent launches", tone: "accent", icon: "◆" },
+      { v: (d.byType || {}).page_view || 0, l: "hub opens", s: `${d.windowDays}d`, tone: "water", icon: "→" },
+      { v: (d.byType || {}).agent_launch || 0, l: "agent launches", s: `${d.windowDays}d`, tone: "green", icon: "▸" },
+    ].map((k) => `
+      <div class="kpi kpi--${k.tone}">
+        <span class="kpi__icon">${k.icon}</span>
+        <div class="kpi__val">${k.v}</div>
+        <div class="kpi__label">${k.l}</div>
+        <div class="kpi__sub">${k.s}</div>
+      </div>`).join(""));
+
+    const people = Array.isArray(d.byPerson) ? d.byPerson : [];
+    setHTML("usage-by-person", d.attributed && people.length
+      ? `<ul class="rows">${people.map((p) =>
+          `<li><span class="id">${p.count}</span><span class="t">${esc(p.email)}</span></li>`).join("")}</ul>`
+      : "");
+  })
+  .catch(() => {
+    document.getElementById("usage-panel").innerHTML =
+      '<p class="lead">Usage stats need <code>functions/api</code> deployed with the <code>HUB_FILES</code> binding — see README, "Usage stats".</p>';
+  });
 
 /* ---- latest screenshots -------------------------------------------------- */
 /* The same manifest the Files page gallery reads, trimmed to the newest five.
