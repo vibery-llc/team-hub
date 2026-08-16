@@ -210,6 +210,7 @@ scripts/
   init.mjs            first-run setup
   fetch-data.mjs      refresh data.json from GitHub + the tracker
   add-activity.mjs    append a validated update after human opt-in
+  publish-build.mjs   upload a locally-built artifact to builds/<platform>/
   sync-proof-shots.sh mirror screenshots out of PR bodies
 ```
 
@@ -232,6 +233,36 @@ and odd characters): `builds/`, `share/`, `meetings/`, `clips/`.
 
 Everything inherits the Access gate, and Access forwards the verified email,
 which the API records as the uploader — never a client-supplied name.
+
+## Publishing a build
+
+The Files page's "download latest build" cards read from `builds/<platform>/`
+in R2 — but nothing puts a build there on its own, deliberately. This template
+cannot assume it can build your project: the first tenant it shipped with
+builds a Unity game against a machine-bound license with no CI at all, and
+other tenants will have their own reasons a build can only happen on
+someone's machine. So there is no build workflow here, only an on-ramp: run
+this after building locally.
+
+```bash
+export HUB_URL=https://my-hub.pages.dev
+export HUB_ACCESS_ID=...       # Access service token Client Id
+export HUB_ACCESS_SECRET=...   # Access service token Client Secret
+
+node scripts/publish-build.mjs ./dist/MyGame-1.4.0.zip windows
+```
+
+It drives the same chunked multipart route the Files page uses in the
+browser, so a multi-gigabyte build is fine. Any failure aborts the multipart
+upload so no partial object is left in the bucket, and it refuses to
+overwrite an existing key — it suggests a versioned `--name` instead. On
+success it prints the download URL. Run it with `--help` for the full option
+list, or `--dry-run` to see what it would do without uploading anything.
+
+`HUB_ACCESS_ID` and `HUB_ACCESS_SECRET` are the same kind of Cloudflare
+Access service token described below for the MCP server — create one under
+Access → Service Auth. The script reads both from the environment and never
+logs or prints them.
 
 ## Connecting an agent (MCP)
 
