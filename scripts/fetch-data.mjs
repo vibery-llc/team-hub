@@ -21,6 +21,8 @@ import { dirname, join } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "site", "data.json");
+const HISTORY_OUT = join(ROOT, "site", "history.json");
+const HISTORY_CAP = 180;
 
 /* hub.config.js assigns a global rather than exporting, so that the browser can
    load it with a plain <script> tag and skip a fetch. Importing it here for the
@@ -250,4 +252,34 @@ if (refreshed) data.generatedAt = new Date().toISOString();
 else console.warn("nothing refreshed — leaving generatedAt alone so the file is unchanged");
 writeFileSync(OUT, JSON.stringify(data, null, 2) + "\n");
 console.log(`wrote ${OUT}`);
+
+/* One dated snapshot per UTC day, so the dashboard can show "up from 6" instead of
+   just "11" this run. The job fires several times a day, so a run on a day that
+   already has a snapshot overwrites it rather than piling up duplicates — the
+   snapshot reflects the day's latest known numbers, not every run of it. Skipped
+   entirely when neither source has ever produced data, so a hub with no
+   credentials yet doesn't start writing a history of nothing. */
+if (data.github || data.jira) {
+  let history = [];
+  try { history = JSON.parse(readFileSync(HISTORY_OUT, "utf8")); } catch { /* first run */ }
+  if (!Array.isArray(history)) history = [];
+
+  const today = new Date().toISOString().slice(0, 10); // UTC date
+  const snapshot = {
+    date: today,
+    openPrs: data.github ? (data.github.openPrs || []).length : null,
+    mergedPrs: data.github ? (data.github.mergedPrs || []).length : null,
+    commitCount: data.github ? data.github.commitCount ?? null : null,
+    ticketsDone: data.jira ? (data.jira.doneRecent || []).length : null,
+  };
+
+  history = history.filter((h) => h.date !== today);
+  history.push(snapshot);
+  history.sort((a, b) => a.date.localeCompare(b.date));
+  if (history.length > HISTORY_CAP) history = history.slice(-HISTORY_CAP);
+
+  writeFileSync(HISTORY_OUT, JSON.stringify(history, null, 2) + "\n");
+  console.log(`wrote ${HISTORY_OUT} (${history.length} day${history.length === 1 ? "" : "s"})`);
+}
+
 process.exit(ok ? 0 : 0); // stale-but-rendering beats a dead refresh; failures are logged above
