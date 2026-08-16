@@ -223,7 +223,7 @@ console.log(bold("\n  3. GitHub secrets"));
 const SECRETS = [
   ["CLOUDFLARE_API_TOKEN", "Cloudflare token with the Cloudflare Pages: Edit permission"],
   ["CLOUDFLARE_ACCOUNT_ID", "from the Cloudflare dashboard sidebar"],
-  ["GH_PAT", `fine-grained PAT, read-only on ${repoSlug} (Contents + Pull requests + Metadata)`],
+  ["GH_PAT", `fine-grained PAT, read-only on ${repoSlug} (Contents + Pull requests + Metadata) — used for dashboard data and, on the scheduled refresh, mirroring proof screenshots out of PR bodies`],
   ["JIRA_EMAIL", "Atlassian account email — skip if you have no tracker"],
   ["JIRA_TOKEN", "Atlassian API token — skip if you have no tracker"],
 ];

@@ -34,13 +34,33 @@ jobs:
           JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
         run: node scripts/fetch-data.mjs
 
+      # Reuses GH_PAT (same secret as "Fetch fresh data" above) — its existing
+      # read-only Contents + Pull requests scope on the source repo is exactly
+      # what mirroring PR-body screenshots needs, nothing extra to grant.
+      #
+      # continue-on-error: a stale or unreachable source repo, or a token
+      # without access to it, must never take deploy down with it — the rest
+      # of this job (and the site) has to ship regardless. sync-proof-shots.sh
+      # itself already no-ops cleanly when no source repo is configured.
+      - name: Sync proof screenshots (scheduled runs only)
+        id: sync-proof-shots
+        if: github.event_name != 'push'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: scripts/sync-proof-shots.sh
+
+      - name: Warn on proof screenshot sync failure
+        if: steps.sync-proof-shots.outcome == 'failure'
+        run: echo "::warning::proof screenshot sync failed — gallery may be stale. See the 'Sync proof screenshots' step above for why (unreachable repo, missing/insufficient GH_PAT, etc). Continuing the rest of the refresh."
+
       - name: Commit refreshed data (scheduled runs only)
         if: github.event_name != 'push'
         run: |
-          if ! git diff --quiet site/data.json; then
+          git add site/data.json site/img/proof
+          if ! git diff --cached --quiet; then
             git config user.name "team-hub-bot"
             git config user.email "actions@users.noreply.github.com"
-            git add site/data.json
             git commit -m "data: scheduled refresh"
             git push
           fi

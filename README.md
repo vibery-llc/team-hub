@@ -171,6 +171,23 @@ KPIs, screenshots and Links — a smaller hub, not a broken one.
 `kind: "jira"` is the only tracker adapter implemented today. The seam for
 others is in `scripts/fetch-data.mjs`.
 
+### The screenshot gallery stays current on its own
+
+`scripts/sync-proof-shots.sh` runs as part of `refresh.yml`'s scheduled fires,
+before the deploy, and commits any newly-mirrored images plus the rewritten
+`manifest.json` alongside the regular data refresh. Left to "run it when you
+remember," the gallery goes stale silently — which reads as *current and
+empty* rather than *out of date*, so this is scheduled rather than manual.
+
+It reads its source repo from `repo.slug` in `hub.config.js`, the same repo
+`fetch-data.mjs` already reads PRs and commits from — never a hardcoded
+literal. A fork with no repo configured gets a clean no-op, not a failure.
+
+The step is deliberately non-fatal: if the source repo is unreachable or the
+`GH_PAT` secret lacks access to it, the workflow logs a warning and the rest
+of the refresh and deploy continue. A stale gallery should never take the
+whole site's refresh down with it.
+
 ### The agent launcher
 
 Prompt templates live in `hub.config.js` as text with `{key}`, `{summary}`,
@@ -210,7 +227,7 @@ scripts/
   init.mjs            first-run setup
   fetch-data.mjs      refresh data.json from GitHub + the tracker
   add-activity.mjs    append a validated update after human opt-in
-  sync-proof-shots.sh mirror screenshots out of PR bodies
+  sync-proof-shots.sh mirror screenshots out of PR bodies, run by refresh.yml
 ```
 
 **`functions/` is at the project root on purpose.** With

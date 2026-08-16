@@ -18,11 +18,23 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$ROOT/site/img/proof"
 
 # Which repo to read. Defaults to repo.slug in site/hub.config.js — resolved
-# from ROOT, not the caller's cwd, so this works from anywhere.
-REPO="${PROOF_REPO:-$(node -e 'require(process.argv[1]);process.stdout.write(globalThis.HUB_CONFIG.repo.slug)' "$ROOT/site/hub.config.js")}"
+# from ROOT, not the caller's cwd, so this works from anywhere. A tenant with
+# no repo configured (or an empty slug) is a clean no-op, not an error: not
+# every fork wires this up, and the caller (the refresh workflow) needs to be
+# able to tell "nothing to do" apart from "something failed".
+REPO="${PROOF_REPO:-$(node -e '
+  require(process.argv[1]);
+  const slug = globalThis.HUB_CONFIG && globalThis.HUB_CONFIG.repo && globalThis.HUB_CONFIG.repo.slug;
+  process.stdout.write(slug || "");
+' "$ROOT/site/hub.config.js")}"
+
+if [ -z "$REPO" ]; then
+  echo "no source repo configured (repo.slug in site/hub.config.js) — skipping proof screenshot sync"
+  exit 0
+fi
 
 command -v gh >/dev/null || { echo "gh CLI not found — https://cli.github.com" >&2; exit 1; }
-gh auth status >/dev/null 2>&1 || { echo "gh not authenticated — run: gh auth login" >&2; exit 1; }
+gh auth status >/dev/null 2>&1 || { echo "gh not authenticated — run: gh auth login, or set GH_TOKEN" >&2; exit 1; }
 
 mkdir -p "$DEST"
 tmp="$(mktemp)"
