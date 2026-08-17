@@ -176,9 +176,38 @@ if (epicsLink && tracker.timelineUrl) epicsLink.href = tracker.timelineUrl;
 const blurb = document.getElementById("phases-blurb");
 if (blurb) blurb.textContent = CONFIG.phasesBlurb || "";
 
-fetch("data.json", { cache: "no-cache" }).then((r) => r.json()).then((d) => {
+/* Week-over-week deltas come from site/history.json, one dated snapshot per UTC
+   day. It may not exist yet — a brand-new hub's first refresh hasn't run, and
+   this template ships without one — so a missing or empty file just means no
+   deltas render, not a broken page. */
+const nearestEntry = (history, targetMs, toleranceMs) => {
+  if (!Array.isArray(history) || !history.length) return null;
+  let best = null, bestDiff = Infinity;
+  for (const h of history) {
+    if (!h || !h.date) continue;
+    const diff = Math.abs(new Date(`${h.date}T00:00:00Z`).getTime() - targetMs);
+    if (diff < bestDiff) { bestDiff = diff; best = h; }
+  }
+  return best && bestDiff <= toleranceMs ? best : null;
+};
+
+// Never render a delta unless both sides are real numbers — that is what keeps
+// a missing/short history from showing a fake "+11" or a misleading "±0".
+const deltaBadge = (current, prior) => {
+  if (!Number.isFinite(current) || !Number.isFinite(prior)) return "";
+  const delta = current - prior;
+  const dir = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+  const sign = delta > 0 ? "+" : "";
+  return `<div class="kpi__delta kpi__delta--${dir}">${sign}${delta} vs last week</div>`;
+};
+
+Promise.all([
+  fetch("data.json", { cache: "no-cache" }).then((r) => r.json()),
+  fetch("history.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+]).then(([d, history]) => {
   const gh = d.github || {}, jira = d.jira || {};
   const days = gh.windowDays || jira.windowDays || CONFIG.windowDays || 7;
+  const weekAgo = nearestEntry(Array.isArray(history) ? history : [], Date.now() - 7 * 864e5, 2 * 864e5);
 
   document.getElementById("generated").textContent =
     "data refreshed " + (d.generatedAt ? new Date(d.generatedAt).toLocaleString() : "—") + ` · rolling ${days}-day window`;
@@ -221,12 +250,12 @@ fetch("data.json", { cache: "no-cache" }).then((r) => r.json()).then((d) => {
 
   const doneCount = (jira.doneRecent || []).length;
   setHTML("kpis", [
-    { v: (gh.openPrs || []).length, l: "open PRs", s: "awaiting eyes", tone: "accent", icon: "⇄" },
-    { v: (gh.mergedPrs || []).length, l: `PRs merged · ${days}d`, s: "to main", tone: "water", icon: "⇥" },
-    { v: gh.commitCount ?? "—", l: `commits · ${days}d`, s: "default branch", tone: "water", icon: "◆" },
+    { v: (gh.openPrs || []).length, prior: weekAgo?.openPrs, l: "open PRs", s: "awaiting eyes", tone: "accent", icon: "⇄" },
+    { v: (gh.mergedPrs || []).length, prior: weekAgo?.mergedPrs, l: `PRs merged · ${days}d`, s: "to main", tone: "water", icon: "⇥" },
+    { v: gh.commitCount ?? "—", prior: weekAgo?.commitCount, l: `commits · ${days}d`, s: "default branch", tone: "water", icon: "◆" },
     // The only board-derived card — it goes with the rest of the board.
     ...(hasTracker
-      ? [{ v: doneCount, l: `tickets done · ${days}d`, s: tracker.label || "the board", tone: "green", icon: "✓" }]
+      ? [{ v: doneCount, prior: weekAgo?.ticketsDone, l: `tickets done · ${days}d`, s: tracker.label || "the board", tone: "green", icon: "✓" }]
       : []),
   ].map((k) => `
     <div class="kpi kpi--${k.tone}">
@@ -234,6 +263,7 @@ fetch("data.json", { cache: "no-cache" }).then((r) => r.json()).then((d) => {
       <div class="kpi__val" data-to="${Number.isFinite(Number(k.v)) ? Number(k.v) : ""}">${k.v}</div>
       <div class="kpi__label">${k.l}</div>
       <div class="kpi__sub">${k.s}</div>
+      ${deltaBadge(Number(k.v), Number(k.prior))}
     </div>`).join(""));
   countUp();
 

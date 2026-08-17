@@ -996,6 +996,18 @@ ul.rows .t a:hover, .epic__name a:hover, .tl__name a:hover, .drop__sub a:hover {
 }
 .kpi__val { color: var(--tone); font-size: 44px; }
 
+/* Week-over-week trend. Omitted from the markup entirely (not just hidden)
+   whenever there is no comparable history — see deltaBadge() in index.html —
+   so there is never a fake "+0" implying a week of data that does not exist. */
+.kpi__delta {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  margin-top: 8px; letter-spacing: .2px;
+}
+.kpi__delta--up   { color: var(--green); }
+.kpi__delta--down { color: var(--amber); }
+.kpi__delta--flat { color: var(--text-dim); }
+
 /* A soft bloom in the corner, tinted to the card's tone. Decorative and behind
    the text, so it can never cost legibility. */
 .kpi::after {

@@ -58,6 +58,7 @@ jobs:
         if: github.event_name != 'push'
         run: |
           git add site/data.json site/img/proof
+          [ -f site/history.json ] && git add site/history.json
           if ! git diff --cached --quiet; then
             git config user.name "team-hub-bot"
             git config user.email "actions@users.noreply.github.com"
