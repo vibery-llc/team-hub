@@ -1,0 +1,12 @@
+{
+  "segments": [
+    { "start": 0, "end": 4, "text": "Let's start the meeting." },
+    { "start": 4, "end": 8, "text": "Sure, go ahead." },
+    { "start": 8, "end": 8.5, "text": "Right." },
+    { "start": 1200, "end": 1210, "text": "Now let's talk about the acquisition timeline." },
+    { "start": 1210, "end": 1212, "text": "Confidential." },
+    { "start": 1250, "end": 1400, "text": "This whole part covers the specific dollar figures being discussed for the deal, which must not be published anywhere." },
+    { "start": 1400, "end": 1402, "text": "Okay." },
+    { "start": 1402, "end": 1420, "text": "Let's move on to the roadmap for next quarter." }
+  ]
+}

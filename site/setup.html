@@ -24,6 +24,7 @@
   <a href="#s-install">Install</a>
   <a href="#s-first">First session</a>
   <a href="#s-paste">Stop pasting</a>
+  <a href="#s-gallery">Hub examples</a>
   <a href="#s-activity">Shared updates</a>
   <a href="#s-next">What's next</a>
 </nav>
@@ -312,6 +313,124 @@ codex doctor      <span class="c"># checks install, auth, config, and runtime he
   <li><strong>The repo already briefs it.</strong> <code>AGENTS.md</code> loads automatically at the start of every session: the stack, the conventions, the gates, the ticket protocol. You never re-explain the project.</li>
   <li><strong>Sessions come back.</strong> <code>claude --continue</code> picks up where you left off; <code>claude --resume</code> (or <code>/resume</code> inside a session) lets you choose an older one. In the desktop app and IDE extension, your conversations are listed in the sidebar. No re-establishing context by re-pasting.</li>
 </ol>
+
+<section class="setup-gallery" aria-labelledby="s-gallery">
+  <h2 id="s-gallery">See the handoff before you configure it</h2>
+  <p>These three drawn snapshots are a visual brief for the person setting up a hub and the agent assisting them. They show the same template moving from unconfigured to human-enabled to actively shared.</p>
+  <div class="callout callout--amber"><strong>The human flips the switch.</strong> An agent may prepare the config after a person chooses what to share, names the accountable owner, and explicitly asks for help. It cannot enable the log, choose its owner, or opt itself in.</div>
+
+  <div class="setup-gallery__grid">
+    <figure class="hub-preview hub-preview--blank">
+      <div class="hub-preview__screen" aria-label="Drawn preview of a fresh unconfigured Team Hub">
+        <div class="hub-preview__chrome">
+          <span class="hub-preview__mark">TH</span>
+          <span class="hub-preview__brand">Fresh Team Hub<small>first run</small></span>
+          <span class="hub-preview__state">not configured</span>
+        </div>
+        <div class="hub-preview__title">Start with the owner, not the automation</div>
+        <div class="preview-empty">
+          <span></span><span></span><span></span>
+          <b>No shared workstream yet</b>
+          <small>The dashboard waits for a human choice.</small>
+        </div>
+        <div class="preview-config preview-config--off">
+          <span>activityLog</span>
+          <strong>off</strong>
+          <small>owner: not set</small>
+        </div>
+        <ol class="preview-checklist">
+          <li>Name the hub</li>
+          <li>Choose what may be shared</li>
+          <li>Name the human owner</li>
+        </ol>
+      </div>
+      <figcaption>
+        <span class="hub-preview__number">01 / fresh</span>
+        <strong>Blank means waiting, not broken.</strong>
+        <span><b>Human:</b> decides the audience and owner. <b>Agent:</b> explains the fields, then waits for an explicit instruction.</span>
+      </figcaption>
+    </figure>
+
+    <figure class="hub-preview hub-preview--forge">
+      <div class="hub-preview__screen" aria-label="Drawn sanitized preview of a future Kingdom Forge Team Hub">
+        <div class="hub-preview__chrome">
+          <span class="hub-preview__mark">KF</span>
+          <span class="hub-preview__brand">Kingdom Forge<small>team hub preview</small></span>
+          <span class="hub-preview__state">sanitized example</span>
+        </div>
+        <div class="hub-preview__title">Before the Flood · playtest readiness</div>
+        <div class="preview-kpis">
+          <span><b>Build</b><strong>candidate ready</strong></span>
+          <span><b>Playtest</b><strong>Thu · 7:00</strong></span>
+          <span><b>Blockers</b><strong>1 to resolve</strong></span>
+        </div>
+        <div class="preview-body">
+          <div class="preview-lanes">
+            <div><span>Production</span><strong>Lobby smoke · ready</strong></div>
+            <div><span>Art</span><strong>Axe silhouette · review</strong></div>
+            <div><span>Design</span><strong>Onboarding beats · drafting</strong></div>
+            <div><span>Agent support</span><strong>Build notes linked</strong></div>
+          </div>
+          <div class="preview-stream">
+            <span class="preview-stream__label">Activity · concise</span>
+            <div class="preview-stream__item preview-stream__item--done"><b>Milestone</b> Playtest packet assembled</div>
+            <div class="preview-stream__item"><b>Next step</b> Human owner requests art review note</div>
+          </div>
+        </div>
+        <div class="preview-config preview-config--on">
+          <span>activityLog</span>
+          <strong>on · human enabled</strong>
+          <small>owner: Mara Vale · fictional</small>
+        </div>
+      </div>
+      <figcaption>
+        <span class="hub-preview__number">02 / human-enabled</span>
+        <strong>Kingdom Forge Team Hub — drawn setup preview.</strong>
+        <span>Not a live hub, build report, playtest schedule, or deployment claim. <b>Human:</b> enables and owns the log. <b>Agent:</b> may add a linked update only when asked.</span>
+      </figcaption>
+    </figure>
+
+    <figure class="hub-preview hub-preview--vibery">
+      <div class="hub-preview__screen" aria-label="Drawn sanitized preview of a future Vibery Team Hub">
+        <div class="hub-preview__chrome">
+          <span class="hub-preview__mark">V</span>
+          <span class="hub-preview__brand">Vibery<small>product + engineering preview</small></span>
+          <span class="hub-preview__state">sanitized example</span>
+        </div>
+        <div class="hub-preview__title">Goals, releases, and work in one readable pass</div>
+        <div class="preview-kpis">
+          <span><b>Roadmap</b><strong>3 goals active</strong></span>
+          <span><b>Release</b><strong>0.9 candidate · green</strong></span>
+          <span><b>PR status</b><strong>2 review · 1 blocked</strong></span>
+        </div>
+        <div class="preview-body preview-body--vibery">
+          <div class="preview-goals">
+            <span class="preview-stream__label">Goals / roadmap</span>
+            <div><b>Activation</b><span>first useful task</span></div>
+            <div><b>Reliability</b><span>release evidence</span></div>
+            <div><b>Desktop</b><span>setup continuity</span></div>
+          </div>
+          <div class="preview-stream">
+            <span class="preview-stream__label">Shared log · linked outcomes</span>
+            <div class="preview-stream__item preview-stream__item--water"><b>Decision</b> Keep setup as one guided path</div>
+            <div class="preview-stream__item preview-stream__item--done"><b>Outcome</b> Release note points to review record</div>
+            <div class="preview-stream__agent">Agent activity · 3 outcomes linked · example only</div>
+          </div>
+        </div>
+        <div class="preview-config preview-config--on">
+          <span>activityLog</span>
+          <strong>on · human enabled</strong>
+          <small>owner: Iris Chen · fictional</small>
+        </div>
+      </div>
+      <figcaption>
+        <span class="hub-preview__number">03 / populated</span>
+        <strong>Vibery Team Hub — drawn setup preview.</strong>
+        <span>Not a live hub, release-health report, confidential roadmap, or deployment claim. <b>Human:</b> remains accountable. <b>Agent:</b> posts concise outcomes with links to the true records.</span>
+      </figcaption>
+    </figure>
+  </div>
+</section>
 
 <h2 id="s-activity">Shared updates are opt-in</h2>
 <p>This hub can expose a central Activity page and let an agent add concise workstream updates. It only appears after a human enables it in <code>site/hub.config.js</code>, names the human owner, and asks for an update. An agent cannot opt itself in.</p>
