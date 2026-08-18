@@ -75,12 +75,12 @@ jobs:
             --arg version "${NEXT}" \
             --arg commit "${COMMIT}" \
             --arg publishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --arg source "https://github.com/vibery-llc/team-hub" \
+            --arg source "https://github.com/${{ github.repository }}" \
             '{version: $version, commit: $commit, publishedAt: $publishedAt, source: $source}' \
             > /tmp/latest.json
 
           gh release create "${NEXT}" \
-            --repo vibery-llc/team-hub \
+            --repo ${{ github.repository }} \
             --title "${NEXT}" \
             --generate-notes \
             --latest \
