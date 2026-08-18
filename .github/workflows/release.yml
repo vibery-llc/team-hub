@@ -1,0 +1,85 @@
+name: Cut release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  cut-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Compute next version
+        id: version
+        run: |
+          set -euo pipefail
+          LATEST="$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")"
+          CUR="${LATEST#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${CUR}"
+          BUMP="${{ github.event.inputs.bump }}"
+          case "${BUMP}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            *)     PATCH=$((PATCH + 1)) ;;
+          esac
+          NEXT="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "next=${NEXT}" >> "$GITHUB_OUTPUT"
+          echo "latest=${LATEST}" >> "$GITHUB_OUTPUT"
+          echo "Computed next version: ${NEXT} (from ${LATEST})"
+
+      - name: Test gate
+        run: |
+          set -euo pipefail
+          for t in scripts/*.test.mjs functions/api/*.test.mjs; do
+            [ -f "${t}" ] && node --test "${t}"
+          done
+
+      - name: Tag release
+        run: |
+          set -euo pipefail
+          NEXT="${{ steps.version.outputs.next }}"
+          git tag "${NEXT}"
+          git push origin "${NEXT}"
+
+      - name: Create GitHub Release with manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          NEXT="${{ steps.version.outputs.next }}"
+          COMMIT="$(git rev-parse HEAD)"
+          jq -n \
+            --arg version "${NEXT}" \
+            --arg commit "${COMMIT}" \
+            --arg publishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg source "https://github.com/vibery-llc/team-hub" \
+            '{version: $version, commit: $commit, publishedAt: $publishedAt, source: $source}' \
+            > /tmp/latest.json
+
+          gh release create "${NEXT}" \
+            --repo vibery-llc/team-hub \
+            --title "${NEXT}" \
+            --generate-notes \
+            --latest \
+            /tmp/latest.json
