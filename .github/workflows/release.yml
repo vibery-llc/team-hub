@@ -4,14 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Version bump
-        required: true
+        description: Version bump (manual override; auto-runs default to patch)
+        required: false
         default: patch
         type: choice
         options:
           - patch
           - minor
           - major
+  push:
+    branches: [main]
 
 permissions:
   contents: write
