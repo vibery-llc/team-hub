@@ -32,9 +32,12 @@
   };
   const nav = allNav.filter((item) => featureEnabled(item.feature));
 
-  // "/", "/index.html" and "/files.html" all have to resolve to a nav entry.
+  // "/", "/index.html" and "/files.html" all have to resolve to a nav entry —
+  // and so must "/files": Cloudflare Pages serves pretty URLs, 308ing the
+  // ".html" form away, so the extension can never be part of the match.
+  const page = (name) => String(name).replace(/\.html$/, "");
   const file = location.pathname.split("/").pop() || "index.html";
-  const here = allNav.find((n) => n.href === file) || nav[0];
+  const here = allNav.find((n) => page(n.href) === page(file)) || nav[0];
 
   /* 0c. Usage events — anonymous by default.
 
