@@ -24,7 +24,7 @@ import { assertStoredBuildMatches, parseArgs } from "./publish-build.mjs";
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "publish-build.mjs");
 
 const ZIP_BYTES = Buffer.from("PK\x03\x04 not a real archive, size is what matters");
-const KEY = `builds/windows/game.zip`;
+const KEY = "builds/windows/game.zip";
 
 const workDir = await mkdtemp(join(tmpdir(), "publish-build-test-"));
 const zipPath = join(workDir, "game.zip");

@@ -253,6 +253,7 @@ async function main() {
   if (opts.manifestOnly) {
     const listed = await apiFetch(baseUrl, `files?prefix=${encodeURIComponent(`${AREA}/${platform}/`)}`);
     assertStoredBuildMatches(await listed.json(), key, info.size);
+    console.log(`verified: ${key} is already stored with a matching size — skipping the build upload`);
     await publishLatestManifest(baseUrl, platform, latestBody);
     return;
   }
