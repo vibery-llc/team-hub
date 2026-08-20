@@ -324,6 +324,25 @@ ul.rows .badge { margin-left: auto; flex-shrink: 0; }
 }
 .btn[data-icon]:hover::before { opacity: 1; }
 
+/* Collapse-to-icon buttons — launcher picker, ticket prompt buttons. The glyph
+   is always visible; the name shows when the button is selected, hovered,
+   keyboard-focused, or reporting launch status (.btn--show). The gap comes
+   from the label's own margin rather than the flex gap, so a collapsed label
+   leaves no phantom space beside the icon. aria-label carries the name while
+   it is visually hidden. */
+.btn--collapse { gap: 0; }
+.btn--collapse .btn__txt {
+  display: inline-block; overflow: hidden; white-space: nowrap;
+  max-width: 220px; margin-left: 8px;
+  transition: max-width .18s ease, margin-left .18s ease, opacity .12s ease;
+}
+.btn--collapse:not(:hover):not(:focus-visible):not([aria-pressed="true"]):not(.btn--show) .btn__txt {
+  max-width: 0; margin-left: 0; opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn--collapse .btn__txt { transition: none; }
+}
+
 /* ---- callouts and microcopy ---------------------------------------------- */
 /* Two shapes, not five. A callout is an emphasis block that takes a tone; a
    note is muted fine print. .empty and .disclosure were separate rules saying

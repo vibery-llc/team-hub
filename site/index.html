@@ -366,7 +366,7 @@ async function renderAgentQueue(queue) {
   await hubReady;
   const active = window.kfCurrentLauncher();
   bar.innerHTML = window.KF_LAUNCHERS.map((l) => `
-    <button class="btn btn--sm btn--pill" type="button" data-launcher="${l.id}" aria-pressed="${l.id === active}" title="${esc(l.note)}">${esc(l.label)}</button>`).join("");
+    <button class="btn btn--sm btn--pill btn--collapse" type="button" data-launcher="${l.id}" data-icon="${esc(l.icon || "✦")}" aria-pressed="${l.id === active}" aria-label="${esc(l.label)}" title="${esc(l.note)}"><span class="btn__txt">${esc(l.label)}</span></button>`).join("");
 
   host.innerHTML = `<div class="queue">${tickets.map((t, ti) => `
     <article class="tk">
@@ -378,7 +378,7 @@ async function renderAgentQueue(queue) {
       <h3 class="tk__name">${esc(t.summary)}</h3>
       <p class="tk__done"><strong>Done =</strong> ${esc(t.done)}</p>
       <div class="tk__acts">
-        ${PROMPTS.map((p, pi) => `<button class="btn btn--sm" type="button" data-icon="▸" data-t="${ti}" data-p="${pi}" title="${esc(p.hint)}">${esc(p.label)}</button>`).join("")}
+        ${PROMPTS.map((p, pi) => `<button class="btn btn--sm btn--collapse" type="button" data-icon="${esc(p.icon || "▸")}" data-t="${ti}" data-p="${pi}" aria-label="${esc(p.label)}" title="${esc(p.hint)}"><span class="btn__txt">${esc(p.label)}</span></button>`).join("")}
       </div>
     </article>`).join("")}</div>${gap > 0 ? `
     <p class="meta mt-2">${queue.readyTotal} of ${queue.todoTotal} To&nbsp;Do tickets are agent-ready. The other ${gap} have no <code>Done =</code> line yet — add one and they show up here.</p>` : ""}`;
@@ -391,12 +391,15 @@ async function renderAgentQueue(queue) {
   host.querySelectorAll("[data-p]").forEach((b) => b.addEventListener("click", async () => {
     const ticket = tickets[Number(b.dataset.t)];
     const spec = PROMPTS[Number(b.dataset.p)];
-    const was = b.textContent;
-    b.classList.add("btn--ok");
-    b.textContent = await window.kfLaunchAgent({
+    /* Status goes into the label span, and .btn--show holds it open — a
+       collapsed button reporting "Copied" into a hidden span tells nobody. */
+    const txt = b.querySelector(".btn__txt") || b;
+    const was = txt.textContent;
+    b.classList.add("btn--ok", "btn--show");
+    txt.textContent = await window.kfLaunchAgent({
       prompt: fill(spec.text, ticket), label: spec.label, source: ticket.key,
     });
-    setTimeout(() => { b.textContent = was; b.classList.remove("btn--ok"); }, 1800);
+    setTimeout(() => { txt.textContent = was; b.classList.remove("btn--ok", "btn--show"); }, 1800);
   }));
 }
 

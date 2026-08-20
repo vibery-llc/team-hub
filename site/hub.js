@@ -155,9 +155,11 @@
   const REPO_GIT_URL = (CONFIG.repo || {}).gitUrl || "";
   const MAX_URL_PROMPT = 4500; // claude-cli caps `q` at 5000; leave headroom for the rest of the URL
 
+  /* `icon` is a text glyph, same language as the fold and button icons — the
+     picker shows it always and the name only when selected or hovered. */
   const LAUNCHERS = [
     {
-      id: "claude-terminal", label: "Claude Code", note: "opens a terminal session",
+      id: "claude-terminal", label: "Claude Code", note: "opens a terminal session", icon: "❯",
       // `repo` resolves to whichever clone you last ran claude in, so one link works for everyone.
       url: (p) => `claude-cli://open?repo=${encodeURIComponent(REPO_SLUG)}&q=${encodeURIComponent(p)}`,
     },
@@ -167,15 +169,15 @@
       // So: copy first (always works), then bring the app forward. If the scheme ever
       // stops resolving, the prompt is still on the clipboard and the button said so.
       id: "claude-desktop", label: "Claude desktop", note: "copies the prompt, then opens the app — paste it in",
-      url: null, launch: "claude://claude", copies: true,
+      url: null, launch: "claude://claude", copies: true, icon: "✳",
     },
     {
-      id: "claude-vscode", label: "Claude in VS Code", note: "opens a tab in your focused window",
+      id: "claude-vscode", label: "Claude in VS Code", note: "opens a tab in your focused window", icon: "◧",
       url: (p) => `vscode://anthropic.claude-code/open?prompt=${encodeURIComponent(p)}`,
     },
     {
       // codex:// is claimed by the ChatGPT desktop app, so this IS the desktop path.
-      id: "codex", label: "Codex desktop", note: "opens the ChatGPT app, workspace matched by git remote",
+      id: "codex", label: "Codex desktop", note: "opens the ChatGPT app, workspace matched by git remote", icon: "◎",
       url: (p) => `codex://threads/new?originUrl=${encodeURIComponent(REPO_GIT_URL)}&prompt=${encodeURIComponent(p)}`,
     },
     /* Anything your team uses that isn't one of the above goes in
@@ -184,6 +186,7 @@
       id: l.id,
       label: l.label,
       note: l.note || "",
+      icon: l.icon || "",
       launch: l.launch || null,
       copies: Boolean(l.copies),
       /* A config launcher declares `urlTemplate` with a {prompt} placeholder
@@ -196,7 +199,7 @@
     })),
     /* Always last, and always present: it needs no protocol handler, works with
        any agent on any OS, and is the fallback every other entry degrades to. */
-    { id: "copy", label: "Copy prompt", note: "paste into anything — Cursor, a CLI, whatever", url: null },
+    { id: "copy", label: "Copy prompt", note: "paste into anything — Cursor, a CLI, whatever", icon: "⧉", url: null },
   ];
 
   function currentLauncher() {
