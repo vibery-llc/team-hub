@@ -251,7 +251,10 @@ async function main() {
   }
 
   if (opts.manifestOnly) {
-    const listed = await apiFetch(baseUrl, `files?prefix=${encodeURIComponent(`${AREA}/${platform}/`)}`);
+    /* The exact key as the prefix, not the platform folder: the listing route
+       stops at 5000 objects, so a folder-wide scan could miss the target key
+       and report a stored build as absent. */
+    const listed = await apiFetch(baseUrl, `files?prefix=${encodeURIComponent(key)}`);
     assertStoredBuildMatches(await listed.json(), key, info.size);
     console.log(`verified: ${key} is already stored with a matching size — skipping the build upload`);
     await publishLatestManifest(baseUrl, platform, latestBody);
@@ -321,9 +324,10 @@ async function main() {
    hand users a manifest describing different bytes than they download. Build
    names like {semver}-{date}-{branch}-{platform} collide across same-day
    rebuilds of the same branch, so "the key already exists" is not proof the
-   stored zip is this zip. The size check is the cheapest contradiction the
-   hub API offers — the listing carries sizes, while a multipart etag is not
-   comparable to a local hash. */
+   stored zip is this zip. The size check is the strongest contradiction the
+   hub API offers today — the listing carries sizes, while a multipart etag is
+   not comparable to a local hash. A same-size different-bytes rebuild still
+   passes; upgrading to a content digest is tracked as issue #17. */
 function assertStoredBuildMatches(listing, key, localSize) {
   const stored = (listing?.files || []).find((f) => f.key === key);
   if (!stored) {

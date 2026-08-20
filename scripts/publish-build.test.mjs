@@ -39,7 +39,8 @@ function startStub(handlers) {
     const requests = [];
     const server = createServer((req, res) => {
       const url = new URL(req.url, "http://localhost");
-      requests.push(`${req.method} ${url.pathname}`);
+      const target = url.searchParams.get("prefix") || url.searchParams.get("key") || "";
+      requests.push(`${req.method} ${url.pathname}${target ? ` ${target}` : ""}`);
       const reply = handlers[`${req.method} ${url.pathname}`] || { status: 500, body: { error: `unexpected ${req.method} ${url.pathname}` } };
       res.writeHead(reply.status, { "content-type": "application/json" });
       res.end(JSON.stringify(reply.body));
@@ -87,7 +88,7 @@ test("409 with --latest-json refuses instead of silently refreshing the manifest
     assert.equal(run.code, 1, `expected failure, got:\n${run.stdout}${run.stderr}`);
     assert.match(run.stderr, /already exists — refusing to overwrite/);
     assert.match(run.stderr, /--manifest-only/, "must point the retry at the explicit verified path");
-    assert.ok(!stub.requests.some((r) => r === "POST /api/files"), "must not write latest.json after a refusal");
+    assert.ok(!stub.requests.some((r) => r.startsWith("POST /api/files")), "must not write latest.json after a refusal");
   } finally {
     await stub.close();
   }
@@ -115,7 +116,11 @@ test("--manifest-only publishes the manifest once the stored size matches", asyn
   try {
     const run = await runScript([zipPath, "windows", `--latest-json=${manifestPath}`, "--manifest-only"], { HUB_URL: stub.url });
     assert.equal(run.code, 0, `expected success, got:\n${run.stdout}${run.stderr}`);
-    assert.deepEqual(stub.requests, ["GET /api/files", "POST /api/files"], "verify the stored build, then write only the manifest");
+    assert.deepEqual(
+      stub.requests,
+      [`GET /api/files ${KEY}`, "POST /api/files builds/windows/latest.json"],
+      "verify the stored build via its exact key (the folder-wide listing caps at 5000), then write only the manifest",
+    );
   } finally {
     await stub.close();
   }
@@ -129,7 +134,7 @@ test("--manifest-only hard-errors when the stored zip has different bytes", asyn
     const run = await runScript([zipPath, "windows", `--latest-json=${manifestPath}`, "--manifest-only"], { HUB_URL: stub.url });
     assert.equal(run.code, 1);
     assert.match(run.stderr, /different build/);
-    assert.ok(!stub.requests.some((r) => r === "POST /api/files"), "must not write a manifest that misdescribes the stored zip");
+    assert.ok(!stub.requests.some((r) => r.startsWith("POST /api/files")), "must not write a manifest that misdescribes the stored zip");
   } finally {
     await stub.close();
   }
