@@ -365,8 +365,15 @@ async function renderAgentQueue(queue) {
 
   await hubReady;
   const active = window.kfCurrentLauncher();
+  /* Collapse-to-icon is opt-in per entry: without an icon there is nothing to
+     collapse TO, and several icon-less entries would render as identical
+     mystery buttons — so those keep their always-visible label. */
+  const collapsible = (icon, label, inner) => icon
+    ? `class="btn btn--sm ${inner} btn--collapse" data-icon="${esc(icon)}" aria-label="${esc(label)}"`
+    : `class="btn btn--sm ${inner}"`;
+  const labelSpan = (icon, label) => icon ? `<span class="btn__txt">${esc(label)}</span>` : esc(label);
   bar.innerHTML = window.KF_LAUNCHERS.map((l) => `
-    <button class="btn btn--sm btn--pill btn--collapse" type="button" data-launcher="${l.id}" data-icon="${esc(l.icon || "✦")}" aria-pressed="${l.id === active}" aria-label="${esc(l.label)}" title="${esc(l.note)}"><span class="btn__txt">${esc(l.label)}</span></button>`).join("");
+    <button ${collapsible(l.icon, l.label, "btn--pill")} type="button" data-launcher="${l.id}" aria-pressed="${l.id === active}" title="${esc(l.note)}">${labelSpan(l.icon, l.label)}</button>`).join("");
 
   host.innerHTML = `<div class="queue">${tickets.map((t, ti) => `
     <article class="tk">
@@ -378,7 +385,9 @@ async function renderAgentQueue(queue) {
       <h3 class="tk__name">${esc(t.summary)}</h3>
       <p class="tk__done"><strong>Done =</strong> ${esc(t.done)}</p>
       <div class="tk__acts">
-        ${PROMPTS.map((p, pi) => `<button class="btn btn--sm btn--collapse" type="button" data-icon="${esc(p.icon || "▸")}" data-t="${ti}" data-p="${pi}" aria-label="${esc(p.label)}" title="${esc(p.hint)}"><span class="btn__txt">${esc(p.label)}</span></button>`).join("")}
+        ${PROMPTS.map((p, pi) => p.icon
+          ? `<button class="btn btn--sm btn--collapse" type="button" data-icon="${esc(p.icon)}" data-t="${ti}" data-p="${pi}" aria-label="${esc(p.label)}" title="${esc(p.hint)}"><span class="btn__txt">${esc(p.label)}</span></button>`
+          : `<button class="btn btn--sm" type="button" data-icon="▸" data-t="${ti}" data-p="${pi}" title="${esc(p.hint)}">${esc(p.label)}</button>`).join("")}
       </div>
     </article>`).join("")}</div>${gap > 0 ? `
     <p class="meta mt-2">${queue.readyTotal} of ${queue.todoTotal} To&nbsp;Do tickets are agent-ready. The other ${gap} have no <code>Done =</code> line yet — add one and they show up here.</p>` : ""}`;
