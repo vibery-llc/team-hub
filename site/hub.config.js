@@ -92,6 +92,31 @@ globalThis.HUB_CONFIG = {
   projectName: "Atlas",
   repoDirName: "atlas",
 
+  /* Optional — only for teams whose project is a Unity game. Declaring a
+     `game` block puts a card on Setup and Files with the pinned Unity Editor
+     version (Unity Hub deep link, download and archive links) and the player
+     version, so nobody hunts chat history for "which Editor do I install".
+
+     scripts/fetch-data.mjs keeps the card live: it reads
+     ProjectSettings/ProjectVersion.txt and PlayerSettings.bundleVersion from
+     `ref` of the repo above into data.json `project`. The values here are the
+     fallback shown when GitHub is unreachable — bump them on an Editor
+     upgrade if you cannot wait for the next scheduled refresh. Omit the whole
+     block (the default) and nothing Unity-related renders anywhere.
+
+  game: {
+    ref: "main",
+    unity: {
+      editorVersion: "6000.0.0f1",   // ProjectVersion.txt m_EditorVersion
+      changeset: "000000000000",     // the hash in m_EditorVersionWithRevision
+    },
+    app: {
+      semver: "0.1.0",               // PlayerSettings.bundleVersion
+      source: "PlayerSettings.bundleVersion",
+    },
+  },
+  */
+
   /* Optional shared activity log. It is absent from navigation until a human
      explicitly enables it AND names the human who owns what gets published.
      Agents must never turn this on for themselves. Once enabled, an agent may

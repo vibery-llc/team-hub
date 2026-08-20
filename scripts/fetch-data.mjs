@@ -44,16 +44,66 @@ const since = new Date(Date.now() - WINDOW_DAYS * 864e5);
 let data = {};
 try { data = JSON.parse(readFileSync(OUT, "utf8")); } catch { /* first run */ }
 
-async function gh(path) {
+async function gh(path, accept = "application/vnd.github+json") {
   const res = await fetch(`https://api.github.com${path}`, {
     headers: {
       Authorization: `Bearer ${process.env.GH_TOKEN}`,
-      Accept: "application/vnd.github+json",
+      Accept: accept,
       "X-GitHub-Api-Version": "2022-11-28",
     },
   });
   if (!res.ok) throw new Error(`GitHub ${path}: ${res.status}`);
-  return res.json();
+  return accept.includes("raw") ? res.text() : res.json();
+}
+
+function parseEditorVersion(txt) {
+  const editorVersion = txt.match(/^m_EditorVersion:\s*(\S+)/m)?.[1] || null;
+  const changeset = txt.match(/^m_EditorVersionWithRevision:\s*\S+\s*\((\w+)\)/m)?.[1] || null;
+  return { editorVersion, changeset };
+}
+
+function parseBundleVersion(asset) {
+  // PlayerSettings.bundleVersion — not visionOSBundleVersion / tvOSBundleVersion.
+  return asset.match(/^  bundleVersion:\s*(\S+)/m)?.[1] || null;
+}
+
+/* Mirrors unityLinks() in site/hub.js (the browser recomputes these as its
+   fallback) — keep the URL shapes in sync. */
+function unityLinks(editorVersion, changeset) {
+  return {
+    hubUri: editorVersion && changeset
+      ? `unityhub://${editorVersion}/${changeset}`
+      : editorVersion ? `unityhub://${editorVersion}` : "",
+    downloadUrl: editorVersion
+      ? `https://unity.com/releases/editor/whats-new/${editorVersion}`
+      : "https://unity.com/releases/editor/archive",
+    archiveUrl: "https://unity.com/releases/editor/archive",
+  };
+}
+
+/** Live Unity Editor + player semver from the game repo, so the hub does not
+ *  hardcode a version that drifts. Fallback values live in hub.config.js `game`. */
+async function fetchProject() {
+  const fallback = CONFIG.game || {};
+  const ref = fallback.ref || "main";
+  const [versionTxt, settings] = await Promise.all([
+    gh(`/repos/${REPO}/contents/ProjectSettings/ProjectVersion.txt?ref=${encodeURIComponent(ref)}`, "application/vnd.github.raw"),
+    gh(`/repos/${REPO}/contents/ProjectSettings/ProjectSettings.asset?ref=${encodeURIComponent(ref)}`, "application/vnd.github.raw"),
+  ]);
+  const { editorVersion, changeset } = parseEditorVersion(versionTxt);
+  const semver = parseBundleVersion(settings);
+  if (!editorVersion) throw new Error("ProjectVersion.txt had no m_EditorVersion");
+  if (!semver) throw new Error("ProjectSettings.asset had no bundleVersion");
+  const links = unityLinks(editorVersion, changeset);
+  return {
+    fetchedAt: new Date().toISOString(),
+    ref,
+    unity: { editorVersion, changeset, ...links },
+    app: {
+      semver,
+      source: fallback.app?.source || "PlayerSettings.bundleVersion",
+    },
+  };
 }
 
 async function fetchGithub() {
@@ -237,6 +287,39 @@ let refreshed = false;
 if (process.env.GH_TOKEN) {
   try { data.github = await fetchGithub(); refreshed = true; console.log("github: refreshed"); }
   catch (e) { ok = false; console.error("github: FAILED —", e.message, "(keeping previous data)"); }
+  /* Unity-game tenants only — a `game` block in hub.config.js opts in.
+     Hubs without one never look for ProjectSettings in the repo. */
+  if (CONFIG.game) {
+    try {
+      data.project = await fetchProject();
+      refreshed = true;
+      console.log(`project: Unity ${data.project.unity.editorVersion} · app ${data.project.app.semver} @ ${data.project.ref}`);
+    } catch (e) {
+      ok = false;
+      /* A cached project from a different ref is worse than the config
+         fallback — it recommends the wrong Editor with confidence. */
+      if (!data.project || data.project.ref !== (CONFIG.game.ref || "main")) {
+        data.project = {
+          fetchedAt: null,
+          ref: CONFIG.game.ref || "main",
+          unity: {
+            editorVersion: CONFIG.game.unity?.editorVersion,
+            changeset: CONFIG.game.unity?.changeset,
+            ...unityLinks(CONFIG.game.unity?.editorVersion, CONFIG.game.unity?.changeset),
+          },
+          app: CONFIG.game.app || { semver: "0.1.0", source: "PlayerSettings.bundleVersion" },
+        };
+        console.error("project: FAILED —", e.message, "(seeded from hub.config.js game fallback)");
+      } else {
+        console.error("project: FAILED —", e.message, "(keeping previous data)");
+      }
+    }
+  } else if (data.project) {
+    /* The tenant opted back out — a stale card must not outlive the config. */
+    delete data.project;
+    refreshed = true;
+    console.log("project: removed (no game config)");
+  }
 } else console.warn("github: GH_TOKEN not set, keeping previous data");
 
 if (TRACKER.kind && TRACKER.kind !== "jira") {

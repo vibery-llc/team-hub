@@ -123,8 +123,8 @@ Then push to `main`. The workflow refreshes data and deploys.
 Two things:
 
 - **`site/hub.config.js`** — one commented file. Org, site name, nav, repo,
-  tracker, phase plan, dashboard links, agent prompt templates, and the optional
-  activity-log opt-in.
+  tracker, phase plan, dashboard links, agent prompt templates, the optional
+  Unity `game` block, and the optional activity-log opt-in.
 - **`site/brand/`** — `mark.png` plus `mark-32.png` and `mark-64.png`.
 
 That is the whole of "who this hub belongs to". Everything else is generic.
@@ -275,6 +275,21 @@ upload so no partial object is left in the bucket, and it refuses to
 overwrite an existing key — it suggests a versioned `--name` instead. On
 success it prints the download URL. Run it with `--help` for the full option
 list, or `--dry-run` to see what it would do without uploading anything.
+
+Versioned names work well as semver + date + branch, e.g.
+`MyGame-v0.1.0-2026-01-15-main-macos.zip` — date and branch keep every upload
+unique without bumping the semver per build. `--latest-json=<file>` uploads
+that JSON alongside as `builds/<platform>/latest.json`, the one key the API
+lets a publish overwrite, so tooling can poll a stable URL for the newest
+build. The Files page skips it when it builds the download cards.
+
+For Unity teams there is one more piece: a `game` block in `hub.config.js`
+puts a card on Setup and Files with the project's pinned Editor version —
+Unity Hub deep link, download and archive links, and the player version.
+`scripts/fetch-data.mjs` keeps it live from `ProjectSettings/ProjectVersion.txt`
+and `PlayerSettings.bundleVersion` on the configured ref of the team repo;
+the config block is the fallback when GitHub is unreachable. The block is
+documented where you would set it, in `site/hub.config.js`.
 
 `HUB_ACCESS_ID` and `HUB_ACCESS_SECRET` are the same kind of Cloudflare
 Access service token described below for the MCP server — create one under
