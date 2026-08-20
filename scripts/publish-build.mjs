@@ -25,10 +25,11 @@
  *                           local file's base name) — use this to publish
  *                           under a versioned name
  *   --latest-json=<file>   also upload this small JSON as
- *                           builds/<platform>/latest.json (overwrites). If the
- *                           build zip itself already exists, refreshes just
- *                           the manifest — that is the retry path for a run
- *                           that died between the two uploads
+ *                           builds/<platform>/latest.json (overwrites)
+ *   --manifest-only        skip the build upload; verify the stored build
+ *                           matches <file>, then write just latest.json.
+ *                           This is the retry path for a run that died
+ *                           between the two uploads (requires --latest-json)
  *   --note=<text>          short note stored as metadata (<=200 chars)
  *   --content-type=<mime>  override the guessed Content-Type
  *   --dry-run              print what would happen, make no network calls
@@ -63,8 +64,10 @@ function usage() {
     "",
     "Options:",
     "  --name=<file name>     upload under this name instead of the local file's",
-    "  --latest-json=<file>   also write builds/<platform>/latest.json (overwrites;",
-    "                         re-run after a partial failure to refresh just this)",
+    "  --latest-json=<file>   also write builds/<platform>/latest.json (overwrites)",
+    "  --manifest-only        skip the build upload; verify the stored build matches",
+    "                         <file>, then write just latest.json (the retry path for",
+    "                         a run that died between the two uploads)",
     "  --note=<text>          short note stored as metadata (<=200 chars)",
     "  --content-type=<mime>  override the guessed Content-Type",
     "  --dry-run              print what would happen, make no network calls",
@@ -79,10 +82,11 @@ function usage() {
 
 function parseArgs(argv) {
   const positional = [];
-  const opts = { dryRun: false, help: false };
+  const opts = { dryRun: false, help: false, manifestOnly: false };
   for (const token of argv) {
     if (token === "--help" || token === "-h") { opts.help = true; continue; }
     if (token === "--dry-run") { opts.dryRun = true; continue; }
+    if (token === "--manifest-only") { opts.manifestOnly = true; continue; }
     const match = token.match(/^--([a-z-]+)=(.*)$/s);
     if (match) {
       const key = match[1].replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -221,6 +225,9 @@ async function main() {
     try { JSON.parse(String(latestBody)); }
     catch { throw new Error(`--latest-json is not valid JSON: ${opts.latestJson}`); }
   }
+  if (opts.manifestOnly && !latestBody) {
+    throw new Error("--manifest-only needs --latest-json — there is nothing else for it to publish.");
+  }
 
   if (!process.env.HUB_URL) {
     throw new Error("HUB_URL is not set — e.g. export HUB_URL=https://my-hub.pages.dev");
@@ -233,9 +240,20 @@ async function main() {
   console.log(`${filePath} -> ${key} (${fmtSize(info.size)}, ${contentType})`);
 
   if (opts.dryRun) {
-    console.log(`[dry-run] would upload in ${Math.ceil(info.size / CHUNK)} chunk(s) of up to ${fmtSize(CHUNK)}`);
-    console.log(`[dry-run] would print: ${baseUrl}/api/dl?key=${encodeURIComponent(key)}`);
+    if (opts.manifestOnly) {
+      console.log(`[dry-run] would check ${key} is already stored with exactly ${info.size} bytes`);
+    } else {
+      console.log(`[dry-run] would upload in ${Math.ceil(info.size / CHUNK)} chunk(s) of up to ${fmtSize(CHUNK)}`);
+      console.log(`[dry-run] would print: ${baseUrl}/api/dl?key=${encodeURIComponent(key)}`);
+    }
     if (latestBody) console.log(`[dry-run] would overwrite: ${AREA}/${platform}/latest.json (${fmtSize(latestBody.length)})`);
+    return;
+  }
+
+  if (opts.manifestOnly) {
+    const listed = await apiFetch(baseUrl, `files?prefix=${encodeURIComponent(`${AREA}/${platform}/`)}`);
+    assertStoredBuildMatches(await listed.json(), key, info.size);
+    await publishLatestManifest(baseUrl, platform, latestBody);
     return;
   }
 
@@ -248,16 +266,12 @@ async function main() {
     );
     ({ uploadId } = await created.json());
   } catch (err) {
-    if (err.status === 409 && latestBody) {
-      /* The zip landed on an earlier run whose latest.json POST then failed.
-         The build is immutable anyway, so recover by refreshing the pointer. */
-      console.warn(`${key} already exists — skipping the build upload, refreshing latest.json only.`);
-      await publishLatestManifest(baseUrl, platform, latestBody);
-      return;
-    }
     if (err.status === 409) {
+      const retryHint = latestBody
+        ? "If this is a retry of a run that died after the build uploaded, re-run with --manifest-only to verify the stored build and refresh just latest.json. Otherwise try"
+        : "Try";
       throw new Error(
-        `${key} already exists — refusing to overwrite it. Try a versioned name instead, e.g.\n` +
+        `${key} already exists — refusing to overwrite it. ${retryHint} a versioned name instead, e.g.\n` +
         `  node scripts/publish-build.mjs ${filePath} ${platformRaw} --name="${versionedSuggestion(uploadName)}"`
       );
     }
@@ -302,6 +316,30 @@ async function main() {
   if (latestBody) await publishLatestManifest(baseUrl, platform, latestBody);
 }
 
+/* latest.json is only a pointer; writing it against a mismatched object would
+   hand users a manifest describing different bytes than they download. Build
+   names like {semver}-{date}-{branch}-{platform} collide across same-day
+   rebuilds of the same branch, so "the key already exists" is not proof the
+   stored zip is this zip. The size check is the cheapest contradiction the
+   hub API offers — the listing carries sizes, while a multipart etag is not
+   comparable to a local hash. */
+function assertStoredBuildMatches(listing, key, localSize) {
+  const stored = (listing?.files || []).find((f) => f.key === key);
+  if (!stored) {
+    throw new Error(
+      `--manifest-only: ${key} is not in the bucket, so there is no build for latest.json to point at. ` +
+      "Re-run without --manifest-only to upload it."
+    );
+  }
+  if (stored.size !== localSize) {
+    throw new Error(
+      `--manifest-only: ${key} holds a different build (stored ${stored.size} bytes, local ${localSize} bytes) — ` +
+      "refusing to publish a manifest that misdescribes the stored zip. Publish this build under a versioned --name instead."
+    );
+  }
+  return stored;
+}
+
 async function publishLatestManifest(baseUrl, platform, body) {
   const manifestKey = `${AREA}/${platform}/latest.json`;
   await apiFetch(baseUrl, `files?key=${encodeURIComponent(manifestKey)}`, {
@@ -319,4 +357,4 @@ if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
   });
 }
 
-export { parseArgs, sanitizeSegment, guessContentType, versionedSuggestion };
+export { parseArgs, sanitizeSegment, guessContentType, versionedSuggestion, assertStoredBuildMatches };
