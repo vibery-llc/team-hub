@@ -73,6 +73,16 @@ function cleanKey(raw) {
   return key;
 }
 
+/**
+ * Per-platform pointer rewritten on every publish. Zip names are unique
+ * (semver + date + branch) and 409-protected; this one file is allowed to
+ * move so "download latest" can stay a stable key.
+ */
+export function isMutableBuildManifest(key) {
+  const parts = String(key || "").split("/");
+  return parts.length === 3 && parts[0] === "builds" && parts[2] === "latest.json";
+}
+
 function cleanPrefix(raw) {
   if (!raw) return null;
   const p = String(raw).replace(/^\/+/, "");
@@ -264,7 +274,9 @@ export async function onRequest(context) {
       if (declared > SINGLE_SHOT_MAX) {
         return bad("file too large for a single request — use the multipart routes", 413);
       }
-      if (await bucket.head(key)) return bad("a file with that name already exists", 409);
+      if ((await bucket.head(key)) && !isMutableBuildManifest(key)) {
+        return bad("a file with that name already exists", 409);
+      }
 
       await bucket.put(key, request.body, {
         httpMetadata: {
@@ -300,7 +312,9 @@ export async function onRequest(context) {
       const headers = new Headers();
       obj.writeHttpMetadata(headers);
       headers.set("etag", obj.httpEtag);
-      headers.set("cache-control", "private, max-age=3600");
+      // The mutable manifest is advertised as a stable "poll me" URL, so it
+      // must revalidate on every hit; everything else is immutable-by-409.
+      headers.set("cache-control", isMutableBuildManifest(key) ? "private, no-cache" : "private, max-age=3600");
       headers.set("accept-ranges", "bytes");
 
       const name = key.slice(key.lastIndexOf("/") + 1);
@@ -323,7 +337,9 @@ export async function onRequest(context) {
     if (route === "mpu/create" && method === "POST") {
       const key = cleanKey(url.searchParams.get("key"));
       if (!key) return bad("bad key");
-      if (await bucket.head(key)) return bad("a file with that name already exists", 409);
+      if ((await bucket.head(key)) && !isMutableBuildManifest(key)) {
+        return bad("a file with that name already exists", 409);
+      }
 
       const mpu = await bucket.createMultipartUpload(key, {
         httpMetadata: {

@@ -19,6 +19,7 @@
 <header class="site" data-hub-shell></header>
 <p class="meta">Twenty minutes, once. Pick an agent, get an account, install it — then <a href="guide.html">the Guide</a> is how we work.</p>
 <nav class="jumps">
+  <a href="#s-unity" data-hub-unity-section hidden>Unity Editor</a>
   <a href="#s-pick">Pick an agent</a>
   <a href="#s-account">Account</a>
   <a href="#s-install">Install</a>
@@ -32,6 +33,14 @@
 <h1>Get your agent running</h1>
 <p class="lead">The part that doesn't come across on a screen-share: <strong>this is not a chat window.</strong> It runs on your machine, in your checkout. It opens files, greps the codebase, runs your tests, and makes commits. You never paste code into it.</p>
 <p class="lead">Install before we pair. Don't try anything ambitious yet — your first real change is better done with someone next to you.</p>
+
+<!-- Painted by hub.js only when hub.config.js has a `game` block (Unity teams);
+     for everyone else this section stays hidden. -->
+<div data-hub-unity-section hidden>
+  <h2 id="s-unity">Install this Unity Editor</h2>
+  <p>The game is pinned to one Editor version. Hub will offer to add it; the archive link is the fallback if Hub isn't installed yet.</p>
+  <div class="mt-3" data-hub-unity></div>
+</div>
 
 <h2 id="s-pick">Pick your agent</h2>
 <p>The first three are wired into this repo. Pick one and everything below follows it.</p>

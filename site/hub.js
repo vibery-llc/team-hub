@@ -316,6 +316,73 @@
   openHashFold();
   window.addEventListener("hashchange", openHashFold);
 
+  /* 6. Unity Editor + player semver — only for teams whose project is a
+     Unity game, which is what a `game` block in hub.config.js declares.
+
+     Setup and Files mount an empty [data-hub-unity] node inside a hidden
+     [data-hub-unity-section] wrapper. We paint first from hub.config.js
+     `game` (may be a day stale) then overlay data.json `project` from the
+     last fetch-data run against the game repo. Without a `game` config the
+     whole thing is skipped — nothing paints, no extra data.json request,
+     and the wrappers stay hidden, so a hub for a non-Unity team never
+     shows an empty Unity heading. */
+  const unityLinks = (game) => {
+    const v = game?.unity?.editorVersion || "";
+    const c = game?.unity?.changeset || "";
+    return {
+      version: v,
+      changeset: c,
+      hubUri: game?.unity?.hubUri || (v && c ? `unityhub://${v}/${c}` : v ? `unityhub://${v}` : ""),
+      downloadUrl: game?.unity?.downloadUrl || (v ? `https://unity.com/releases/editor/whats-new/${v}` : "https://unity.com/releases/editor/archive"),
+      archiveUrl: game?.unity?.archiveUrl || "https://unity.com/releases/editor/archive",
+      hubApp: "https://unity.com/download",
+      semver: game?.app?.semver || "",
+      source: game?.app?.source || "PlayerSettings.bundleVersion",
+      ref: game?.ref || "",
+    };
+  };
+
+  const paintUnity = (game) => {
+    const L = unityLinks(game);
+    if (!L.version) return;
+    const html = `
+      <div class="build unity-install">
+        <div class="build__tag">Unity Editor</div>
+        <div class="build__name">${esc(L.version)}</div>
+        <div class="build__meta">this project · player v${esc(L.semver || "—")} (${esc(L.source)})
+          ${L.ref ? `<br>read from <code>${esc(L.ref)}</code>` : ""}
+          ${L.changeset ? `<br>changeset ${esc(L.changeset)}` : ""}</div>
+        <div class="btn-row m-0">
+          ${L.hubUri ? `<a class="btn btn--primary" href="${esc(L.hubUri)}">Open in Unity Hub</a>` : ""}
+          <a class="btn btn--ghost" href="${esc(L.downloadUrl)}">Download this version</a>
+          <a class="btn btn--ghost" href="${esc(L.archiveUrl)}">Editor archive</a>
+          <a class="btn btn--ghost" href="${esc(L.hubApp)}">Get Unity Hub</a>
+        </div>
+      </div>`;
+    for (const el of document.querySelectorAll("[data-hub-unity]")) {
+      el.innerHTML = html;
+      /* The first paint runs before the MutationObserver below exists, so
+         mark the card's off-site links by hand. */
+      markExternal(el);
+    }
+    for (const el of document.querySelectorAll("[data-hub-unity-section]")) el.hidden = false;
+  };
+
+  if (CONFIG.game) {
+    paintUnity(CONFIG.game);
+    fetch("data.json", { cache: "no-cache" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.project) return;
+        paintUnity({
+          ref: d.project.ref || CONFIG.game.ref,
+          unity: { ...(CONFIG.game.unity || {}), ...(d.project.unity || {}) },
+          app: { ...(CONFIG.game.app || {}), ...(d.project.app || {}) },
+        });
+      })
+      .catch(() => { /* local preview without data.json is fine */ });
+  }
+
   /* The dashboard, meetings and files pages build their links from fetched
      JSON after this runs, so watch for nodes arriving later. */
   new MutationObserver((records) => {

@@ -19,6 +19,7 @@
 <header class="site" data-hub-shell></header>
 <p class="meta" id="who">everything here is behind the same Cloudflare Access gate as the rest of the hub</p>
 <nav class="jumps">
+  <a href="#s-unity" data-hub-unity-section hidden>Unity Editor</a>
   <a href="#s-builds">Builds</a>
   <a href="#s-drop">Team drop</a>
   <a href="#s-shots">Screenshots</a>
@@ -28,6 +29,14 @@
 <p class="lead">Drop anything the team should be able to grab — builds, captures, reference art, a spreadsheet. Files live in R2, not in the git repo, so size isn't a problem and nothing here bloats a code branch.</p>
 
 <div id="setup" style="display:none"></div>
+
+<!-- Painted by hub.js only when hub.config.js has a `game` block (Unity teams);
+     for everyone else this section stays hidden. -->
+<div data-hub-unity-section hidden>
+  <h2 id="s-unity">Unity Editor this project needs</h2>
+  <p class="lead">Same version as Setup. Grab a player from the cards below — you still need this Editor to open the project.</p>
+  <div class="mt-3" data-hub-unity></div>
+</div>
 
 <h2 id="s-builds">Latest builds</h2>
 <p class="lead">The newest upload in each platform folder. Everything older drops into the archive below.</p>
@@ -174,6 +183,7 @@ async function loadBuilds() {
     // builds/<platform>/<file>; a file dropped straight into builds/ is "general".
     const groups = {};
     for (const f of files) {
+      if (f.name === "latest.json") continue;
       const parts = f.key.split("/");
       const platform = parts.length > 2 ? parts[1] : "general";
       (groups[platform] ||= []).push(f);

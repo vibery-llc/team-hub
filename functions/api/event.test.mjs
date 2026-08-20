@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EVENT_TYPES, buildUsageEvent, cleanText, summarizeEvents } from "./[[route]].js";
+import { EVENT_TYPES, buildUsageEvent, cleanText, summarizeEvents, isMutableBuildManifest } from "./[[route]].js";
 
 test("cleanText trims, single-lines and caps", () => {
   assert.equal(cleanText("  hi  ", 10), "hi");
@@ -94,4 +94,17 @@ test("summarizeEvents surfaces attribution only from what was actually recorded"
     { email: "a@b.com", count: 2 },
     { email: "c@d.com", count: 1 },
   ]);
+});
+
+test("only builds/<platform>/latest.json is overwriteable", () => {
+  // Both call sites run cleanKey() first, so this never sees `..`, `//`,
+  // backslashes or out-of-area keys — it only carves the one exception out
+  // of the "no overwrites" rule for keys that already passed validation.
+  assert.equal(isMutableBuildManifest("builds/macos/latest.json"), true);
+  assert.equal(isMutableBuildManifest("builds/windows/latest.json"), true);
+  assert.equal(isMutableBuildManifest("builds/macos/Atlas-v0.1.0-2026-01-15-main-macos.zip"), false);
+  assert.equal(isMutableBuildManifest("share/latest.json"), false);
+  assert.equal(isMutableBuildManifest("builds/latest.json"), false);
+  assert.equal(isMutableBuildManifest("builds/macos/nested/latest.json"), false);
+  assert.equal(isMutableBuildManifest("builds/macos/LATEST.JSON"), false);
 });

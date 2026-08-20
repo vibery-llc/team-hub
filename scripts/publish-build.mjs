@@ -24,6 +24,11 @@
  *   --name=<file name>     override the uploaded file name (default: the
  *                           local file's base name) — use this to publish
  *                           under a versioned name
+ *   --latest-json=<file>   also upload this small JSON as
+ *                           builds/<platform>/latest.json (overwrites). If the
+ *                           build zip itself already exists, refreshes just
+ *                           the manifest — that is the retry path for a run
+ *                           that died between the two uploads
  *   --note=<text>          short note stored as metadata (<=200 chars)
  *   --content-type=<mime>  override the guessed Content-Type
  *   --dry-run              print what would happen, make no network calls
@@ -43,7 +48,7 @@
  * hub is actually gated.
  */
 
-import { open, stat } from "node:fs/promises";
+import { open, stat, readFile } from "node:fs/promises";
 
 const CHUNK = 32 * 1024 * 1024; // matches the browser uploader in site/files.html
 const AREA = "builds";
@@ -58,6 +63,8 @@ function usage() {
     "",
     "Options:",
     "  --name=<file name>     upload under this name instead of the local file's",
+    "  --latest-json=<file>   also write builds/<platform>/latest.json (overwrites;",
+    "                         re-run after a partial failure to refresh just this)",
     "  --note=<text>          short note stored as metadata (<=200 chars)",
     "  --content-type=<mime>  override the guessed Content-Type",
     "  --dry-run              print what would happen, make no network calls",
@@ -204,6 +211,17 @@ async function main() {
   const key = `${AREA}/${platform}/${uploadName}`;
   const contentType = opts.contentType || guessContentType(uploadName);
 
+  /* Read the manifest before anything uploads, so a bad --latest-json path
+     fails here rather than after the build zip is already published. */
+  let latestBody = null;
+  if (opts.latestJson) {
+    latestBody = await readFile(opts.latestJson).catch(() => {
+      throw new Error(`No such file: ${opts.latestJson} (--latest-json)`);
+    });
+    try { JSON.parse(String(latestBody)); }
+    catch { throw new Error(`--latest-json is not valid JSON: ${opts.latestJson}`); }
+  }
+
   if (!process.env.HUB_URL) {
     throw new Error("HUB_URL is not set — e.g. export HUB_URL=https://my-hub.pages.dev");
   }
@@ -217,6 +235,7 @@ async function main() {
   if (opts.dryRun) {
     console.log(`[dry-run] would upload in ${Math.ceil(info.size / CHUNK)} chunk(s) of up to ${fmtSize(CHUNK)}`);
     console.log(`[dry-run] would print: ${baseUrl}/api/dl?key=${encodeURIComponent(key)}`);
+    if (latestBody) console.log(`[dry-run] would overwrite: ${AREA}/${platform}/latest.json (${fmtSize(latestBody.length)})`);
     return;
   }
 
@@ -229,6 +248,13 @@ async function main() {
     );
     ({ uploadId } = await created.json());
   } catch (err) {
+    if (err.status === 409 && latestBody) {
+      /* The zip landed on an earlier run whose latest.json POST then failed.
+         The build is immutable anyway, so recover by refreshing the pointer. */
+      console.warn(`${key} already exists — skipping the build upload, refreshing latest.json only.`);
+      await publishLatestManifest(baseUrl, platform, latestBody);
+      return;
+    }
     if (err.status === 409) {
       throw new Error(
         `${key} already exists — refusing to overwrite it. Try a versioned name instead, e.g.\n` +
@@ -272,6 +298,18 @@ async function main() {
   }
 
   console.log(`done: ${baseUrl}/api/dl?key=${encodeURIComponent(key)}`);
+
+  if (latestBody) await publishLatestManifest(baseUrl, platform, latestBody);
+}
+
+async function publishLatestManifest(baseUrl, platform, body) {
+  const manifestKey = `${AREA}/${platform}/latest.json`;
+  await apiFetch(baseUrl, `files?key=${encodeURIComponent(manifestKey)}`, {
+    method: "POST",
+    headers: { "x-file-type": "application/json", "content-type": "application/json" },
+    body,
+  });
+  console.log(`latest: ${baseUrl}/api/dl?key=${encodeURIComponent(manifestKey)}`);
 }
 
 if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {

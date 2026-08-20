@@ -447,6 +447,8 @@ footer.site {
 }
 .build__name { font-size: 16px; font-weight: 800; letter-spacing: -0.2px; margin: 4px 0 2px; word-break: break-word; }
 .build__meta { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); margin-bottom: 14px; }
+.unity-install { border-top-color: var(--water); }
+.unity-install .build__tag { color: var(--water); }
 
 /* ---- screenshot gallery -------------------------------------------------- */
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
