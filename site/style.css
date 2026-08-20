@@ -230,11 +230,15 @@ ul.rows .badge { margin-left: auto; flex-shrink: 0; }
 
 .links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .links a {
+  display: inline-flex; align-items: center; gap: 7px;
   font-family: var(--font-mono); font-size: 12px; text-decoration: none;
   background: var(--surface); border: 1px solid var(--border-bright); border-radius: 8px;
   padding: 8px 14px; color: var(--text);
 }
 .links a:hover { border-color: var(--accent); color: var(--accent); }
+/* Destination favicons, requested at 32px and shown at 14 so they stay crisp
+   on dense displays. A broken icon removes itself; the chip reads as text. */
+.links__ico { width: 14px; height: 14px; border-radius: 3px; }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }

@@ -175,9 +175,19 @@ if (!hasTracker) for (const el of document.querySelectorAll("[data-needs-tracker
 if (!hasPhases) for (const el of document.querySelectorAll("[data-needs-phases]")) el.remove();
 
 /* Links are pure config — render them before the fetch so they are there even
-   if data.json never arrives. */
+   if data.json never arrives. Each off-site link gets its destination's favicon
+   (Google's public favicon service, keyed only by hostname); a link whose icon
+   can't load just shows as text, which is what this list always was. */
 document.getElementById("links").innerHTML = (CONFIG.links || [])
-  .map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join("");
+  .map((l) => {
+    let icon = "";
+    try {
+      const host = new URL(l.href, location.href).host;
+      if (host && host !== location.host)
+        icon = `<img class="links__ico" src="https://www.google.com/s2/favicons?domain=${esc(host)}&amp;sz=32" alt="" loading="lazy" onerror="this.remove()">`;
+    } catch (e) { /* malformed href — render it linkless of icon, not broken */ }
+    return `<a href="${esc(l.href)}">${icon}${esc(l.label)}</a>`;
+  }).join("");
 
 const epicsLink = document.getElementById("epics-link");
 if (epicsLink && tracker.timelineUrl) epicsLink.href = tracker.timelineUrl;
