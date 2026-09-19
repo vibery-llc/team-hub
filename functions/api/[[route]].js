@@ -26,6 +26,8 @@
  *   GET    /api/stats                        aggregate usage counts, last 30 days
  */
 
+import { accessIdentity } from "../_shared/access.js";
+
 /** Top-level prefixes the API will touch. Anything else is rejected. */
 const AREAS = ["share", "builds", "meetings", "clips"];
 
@@ -91,15 +93,6 @@ function cleanPrefix(raw) {
   return AREAS.includes(area) ? p : null;
 }
 
-/** Cloudflare Access forwards the verified identity on every request. */
-function identity(request) {
-  const h = request.headers;
-  return (
-    h.get("Cf-Access-Authenticated-User-Email") ||
-    h.get("cf-access-authenticated-user-email") ||
-    "unknown"
-  );
-}
 
 /** Single-line, length-capped text. Never throws — a malformed field is
  * truncated/blanked rather than failing the whole fire-and-forget request. */
@@ -111,9 +104,10 @@ export function cleanText(raw, max) {
  * Builds the record stored for one usage event. `getIdentity` is only ever
  * called when the caller explicitly asked to attribute — see hub.config.js
  * `usageStats.attribution` — and even then the identity value comes from
- * that callback (the Access-verified header), never from `body`. A tenant
+ * that callback (the identity Access verified), never from `body`. A tenant
  * with attribution off never has this callback invoked, so no identity is
- * read, let alone stored.
+ * stored with an event. (Every request is still checked against Cloudflare
+ * Access, which reads the identity to verify it; checking is not recording.)
  */
 export function buildUsageEvent(body, getIdentity, now = new Date()) {
   const type = cleanText(body?.type, 32);
@@ -196,8 +190,14 @@ export async function onRequest(context) {
     );
   }
 
+  /* Who Cloudflare Access verified this request as (see functions/_shared/access.js). A
+     service token carries no email, hence the fallback. */
+  const access = await accessIdentity(request, env);
+  if (!access.ok) return json({ error: access.error }, access.status);
+  const identity = () => access.email || "unknown";
+
   try {
-    if (route === "whoami") return json({ email: identity(request) });
+    if (route === "whoami") return json({ email: identity() });
 
     // ---- usage events --------------------------------------------------------
     if (route === "event" && method === "POST") {
@@ -205,7 +205,7 @@ export async function onRequest(context) {
       try { body = await request.json(); } catch { return bad("bad json"); }
 
       let event;
-      try { event = buildUsageEvent(body, () => identity(request)); }
+      try { event = buildUsageEvent(body, () => identity()); }
       catch (err) { return bad(err.message); }
 
       const day = event.timestamp.slice(0, 10);
@@ -286,7 +286,7 @@ export async function onRequest(context) {
             "application/octet-stream",
         },
         customMetadata: {
-          uploader: identity(request),
+          uploader: identity(),
           note: (url.searchParams.get("note") || "").slice(0, 200),
         },
       });
@@ -346,7 +346,7 @@ export async function onRequest(context) {
           contentType: url.searchParams.get("type") || "application/octet-stream",
         },
         customMetadata: {
-          uploader: identity(request),
+          uploader: identity(),
           note: (url.searchParams.get("note") || "").slice(0, 200),
         },
       });

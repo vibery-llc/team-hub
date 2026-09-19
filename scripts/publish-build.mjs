@@ -35,20 +35,25 @@
  *   --dry-run              print what would happen, make no network calls
  *   --help                 print this usage
  *
- * Required environment (read only, never logged or printed):
+ * Environment (read only, never logged or printed):
  *   HUB_URL             base URL of the deployed hub, e.g. https://my-hub.pages.dev
- *   HUB_ACCESS_ID       Cloudflare Access service token Client Id
- *   HUB_ACCESS_SECRET   Cloudflare Access service token Client Secret
+ *   HUB_ACCESS_ID       Cloudflare Access service token Client Id     (build machines only)
+ *   HUB_ACCESS_SECRET   Cloudflare Access service token Client Secret (build machines only)
  *
- * The hub sits behind Cloudflare Access, so a machine caller authenticates
- * with a service token (Access → Service Auth in the Cloudflare dashboard),
- * sent as the CF-Access-Client-Id / CF-Access-Client-Secret headers. If
- * HUB_ACCESS_ID or HUB_ACCESS_SECRET is unset, the script proceeds without
- * those headers — useful against `wrangler pages dev`, which has no Access
- * gate in front of it — and Access will reject the request if the target
- * hub is actually gated.
+ * The hub sits behind Cloudflare Access. How this run gets through, first
+ * match wins (see resolveAccess):
+ *   1. HUB_ACCESS_ID + HUB_ACCESS_SECRET: a service token, for a build machine
+ *      with nobody at it. Uploads are recorded against the token, not a person.
+ *   2. `cloudflared access token -app=<HUB_URL>`: the person at this machine,
+ *      after signing in once with `cloudflared access login <HUB_URL>`. Uploads
+ *      are recorded against their email.
+ *   3. Neither: no credentials at all. That only works against `wrangler pages
+ *      dev`, which has no Access gate in front of it.
+ * Before uploading, the script asks the hub who it thinks you are and prints
+ * it, so a run that Access would turn away fails before any bytes move.
  */
 
+import { execFileSync } from "node:child_process";
 import { open, stat, readFile } from "node:fs/promises";
 
 const CHUNK = 32 * 1024 * 1024; // matches the browser uploader in site/files.html
@@ -73,10 +78,14 @@ function usage() {
     "  --dry-run              print what would happen, make no network calls",
     "  --help                 print this usage",
     "",
-    "Required environment (never logged or printed):",
+    "Environment (never logged or printed):",
     "  HUB_URL             e.g. https://my-hub.pages.dev",
-    "  HUB_ACCESS_ID       Cloudflare Access service token Client Id",
-    "  HUB_ACCESS_SECRET   Cloudflare Access service token Client Secret",
+    "  HUB_ACCESS_ID       Cloudflare Access service token Client Id (build machines)",
+    "  HUB_ACCESS_SECRET   Cloudflare Access service token Client Secret (build machines)",
+    "",
+    "On your own machine, skip the token: sign in once with",
+    "  cloudflared access login <HUB_URL>",
+    "and uploads are recorded against your email.",
   ];
 }
 
@@ -149,12 +158,43 @@ function versionedSuggestion(name) {
   return dot > 0 ? `${name.slice(0, dot)}-${stamp}${name.slice(dot)}` : `${name}-${stamp}`;
 }
 
-async function apiFetch(baseUrl, path, opts = {}) {
-  const headers = { ...(opts.headers || {}) };
-  if (process.env.HUB_ACCESS_ID && process.env.HUB_ACCESS_SECRET) {
-    headers["CF-Access-Client-Id"] = process.env.HUB_ACCESS_ID;
-    headers["CF-Access-Client-Secret"] = process.env.HUB_ACCESS_SECRET;
+/* The person's own Access session, from `cloudflared access login`. Returns
+   null when cloudflared is missing (it throws), the person hasn't signed in
+   (it exits non-zero), or the session has expired (it deletes the session,
+   exits 0 and prints nothing). Anything that isn't a JWT counts as no token,
+   so an error message can never be sent as a credential. */
+function cloudflaredToken(baseUrl) {
+  try {
+    const out = execFileSync("cloudflared", ["access", "token", `-app=${baseUrl}`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 15000,
+    }).trim();
+    return /^[\w-]+\.[\w-]+\.[\w-]+$/.test(out) ? out : null;
+  } catch {
+    return null;
   }
+}
+
+/* Which credentials this run sends, first match wins. The service token
+   stays first so a build machine that has one keeps working exactly as
+   before, even if someone once ran cloudflared on it. */
+function resolveAccess(env, baseUrl, getToken = cloudflaredToken) {
+  if (env.HUB_ACCESS_ID && env.HUB_ACCESS_SECRET) {
+    return {
+      via: "service token",
+      headers: { "CF-Access-Client-Id": env.HUB_ACCESS_ID, "CF-Access-Client-Secret": env.HUB_ACCESS_SECRET },
+    };
+  }
+  const token = getToken(baseUrl);
+  if (token) return { via: "cloudflared", headers: { "cf-access-token": token } };
+  return { via: null, headers: {} };
+}
+
+let access = { via: null, headers: {} };
+
+async function apiFetch(baseUrl, path, opts = {}) {
+  const headers = { ...access.headers, ...(opts.headers || {}) };
   const res = await fetch(`${baseUrl}/api/${path}`, { ...opts, headers });
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
@@ -233,9 +273,6 @@ async function main() {
     throw new Error("HUB_URL is not set — e.g. export HUB_URL=https://my-hub.pages.dev");
   }
   const baseUrl = process.env.HUB_URL.replace(/\/+$/, "");
-  if (!process.env.HUB_ACCESS_ID || !process.env.HUB_ACCESS_SECRET) {
-    console.error("HUB_ACCESS_ID / HUB_ACCESS_SECRET not set — sending unauthenticated requests. This only works against a hub with no Access gate in front of it (e.g. `wrangler pages dev`).");
-  }
 
   console.log(`${filePath} -> ${key} (${fmtSize(info.size)}, ${contentType})`);
 
@@ -249,6 +286,16 @@ async function main() {
     if (latestBody) console.log(`[dry-run] would overwrite: ${AREA}/${platform}/latest.json (${fmtSize(latestBody.length)})`);
     return;
   }
+
+  access = resolveAccess(process.env, baseUrl);
+  if (!access.via) {
+    console.error(
+      `No Access credentials: sign in once with \`cloudflared access login ${baseUrl}\`, or set ` +
+      "HUB_ACCESS_ID / HUB_ACCESS_SECRET on a build machine. Sending unauthenticated requests, which " +
+      "only works against a hub with no Access gate in front of it (e.g. `wrangler pages dev`)."
+    );
+  }
+  console.log(`publishing as ${await whoami(baseUrl)}`);
 
   if (opts.manifestOnly) {
     /* The exact key as the prefix, not the platform folder: the listing route
@@ -345,6 +392,32 @@ function assertStoredBuildMatches(listing, key, localSize) {
   return stored;
 }
 
+/* Access turns away a request it won't let through in one of two ways: a 401
+   (to a non-browser client, once Managed OAuth is on for the application) or
+   a redirect to its login page, which fetch follows into an HTML 200. Asking
+   /api/whoami first turns either into a clear message before any upload
+   starts, and tells the person who the upload will be recorded against. */
+async function whoami(baseUrl) {
+  const refused = new Error(
+    `Cloudflare Access did not let this request through to ${baseUrl}. Sign in with ` +
+    `\`cloudflared access login ${baseUrl}\` (your session may have expired), or set ` +
+    "HUB_ACCESS_ID / HUB_ACCESS_SECRET on a build machine."
+  );
+  let res;
+  try { res = await apiFetch(baseUrl, "whoami"); }
+  catch (err) {
+    if (err.status !== 401 && err.status !== 403) throw err;
+    /* Keep the hub's own reason when it gave one: "issued for a different application" is
+       not something signing in again can fix, and hiding it sends people round in circles. */
+    if (/^\d{3} /.test(err.message)) throw refused;
+    throw new Error(`${refused.message}\n  The hub said: ${err.message}`);
+  }
+  let body;
+  try { body = await res.json(); } catch { body = null; }
+  if (!body || typeof body.email !== "string") throw refused;
+  return body.email;
+}
+
 async function publishLatestManifest(baseUrl, platform, body) {
   const manifestKey = `${AREA}/${platform}/latest.json`;
   await apiFetch(baseUrl, `files?key=${encodeURIComponent(manifestKey)}`, {
@@ -362,4 +435,4 @@ if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
   });
 }
 
-export { parseArgs, sanitizeSegment, guessContentType, versionedSuggestion, assertStoredBuildMatches };
+export { parseArgs, sanitizeSegment, guessContentType, versionedSuggestion, assertStoredBuildMatches, resolveAccess };

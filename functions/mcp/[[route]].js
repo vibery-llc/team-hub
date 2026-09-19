@@ -11,13 +11,24 @@
  * to the workflow. The protocol surface we need is four methods.
  *
  * AUTH: this route sits behind the same Cloudflare Access gate as the rest of
- * the site. Machine clients authenticate with an Access **service token**
- * (CF-Access-Client-Id / CF-Access-Client-Secret headers), which Access
- * validates before the request ever reaches this code. That is why there is no
- * bespoke token check here — adding one would be a second, weaker gate.
+ * the site, and Access checks every request before it reaches this code. There
+ * is no token scheme of our own here, which would be a second, weaker gate.
+ * What this code does check is the JWT Access signs onto each request
+ * (functions/_shared/access.js), so the identity it records can't be faked by
+ * a request that somehow skipped Access. Two kinds of caller get through:
+ *   - A person's agent signs in as that person, in the browser. With Managed
+ *     OAuth turned on for the Access application, Access answers an MCP client
+ *     that has no token with a 401 that starts the standard MCP OAuth flow, and
+ *     forwards the person's email (Cf-Access-Authenticated-User-Email) on every
+ *     request after that.
+ *   - A build machine with nobody at it uses an Access service token
+ *     (CF-Access-Client-Id / CF-Access-Client-Secret headers). Service tokens
+ *     carry no email, so uploads from one are recorded against the token.
  *
  * Binding: HUB_FILES -> R2. Static JSON is read through env.ASSETS.
  */
+
+import { accessIdentity } from "../_shared/access.js";
 
 const PROTOCOL_VERSION = "2025-06-18";
 /* The hub's name is per-deployment, so it comes from a wrangler.toml [vars]
@@ -195,10 +206,7 @@ function buildKey(area, folder, name) {
   return [area, safeFolder, safeName].filter(Boolean).join("/");
 }
 
-const identity = (request) =>
-  request.headers.get("Cf-Access-Authenticated-User-Email") || "mcp-service-token";
-
-async function callTool(name, args, { env, request }) {
+async function callTool(name, args, { env, request, identity }) {
   const bucket = env.HUB_FILES;
   args = args || {};
 
@@ -349,7 +357,7 @@ async function callTool(name, args, { env, request }) {
       const ext = String(args.name).split(".").pop().toLowerCase();
       await bucket.put(key, bytes, {
         httpMetadata: { contentType: args.content_type || TYPE_BY_EXT[ext] || "application/octet-stream" },
-        customMetadata: { uploader: identity(request), note: "via mcp" },
+        customMetadata: { uploader: identity, note: "via mcp" },
       });
       return ok({ uploaded: key, size: bytes.length, downloadUrl: `/api/dl?key=${encodeURIComponent(key)}` });
     }
@@ -362,14 +370,14 @@ async function callTool(name, args, { env, request }) {
       if (await bucket.head(key)) return fail(`${key} already exists — pick another name`);
 
       const mpu = await bucket.createMultipartUpload(key, {
-        customMetadata: { uploader: identity(request), note: "via mcp" },
+        customMetadata: { uploader: identity, note: "via mcp" },
       });
       return ok({
         key,
         uploadId: mpu.uploadId,
         chunkSize: 32 * 1024 * 1024,
         instructions:
-          "PUT each 32MB chunk to /api/mpu/part?key=..&uploadId=..&part=N (1-based, every chunk the same size except the last), collecting the returned {partNumber, etag}. Then POST /api/mpu/complete?key=..&uploadId=.. with {parts:[...]}. On failure DELETE /api/mpu/abort?key=..&uploadId=.. so no partial object is left behind. Send the Access service token headers on every request.",
+          "PUT each 32MB chunk to /api/mpu/part?key=..&uploadId=..&part=N (1-based, every chunk the same size except the last), collecting the returned {partNumber, etag}. Then POST /api/mpu/complete?key=..&uploadId=.. with {parts:[...]}. On failure DELETE /api/mpu/abort?key=..&uploadId=.. so no partial object is left behind. These are plain HTTPS requests, so they need their own way past Cloudflare Access: on a person's machine, sign in once with `cloudflared access login <hub URL>` and send each request with `cloudflared access curl`, which records the upload against that person; a build machine sends its Access service token headers instead.",
       });
     }
 
@@ -410,7 +418,13 @@ async function handleRpc(msg, ctx) {
 }
 
 export async function onRequest(context) {
-  const { request } = context;
+  const { request, env } = context;
+
+  /* Who Cloudflare Access verified this request as (see functions/_shared/access.js). A
+     service token carries no email, hence the fallback. */
+  const access = await accessIdentity(request, env);
+  if (!access.ok) return json({ error: access.error }, access.status);
+  const ctx = { ...context, identity: access.email || "mcp-service-token" };
 
   if (request.method === "GET") {
     // A browser landing here should get an explanation, not a protocol error.
@@ -433,7 +447,7 @@ export async function onRequest(context) {
   const replies = [];
   for (const msg of messages) {
     if (msg && msg.id === undefined) continue;
-    replies.push(await handleRpc(msg, context));
+    replies.push(await handleRpc(msg, ctx));
   }
   if (replies.length === 0) return new Response(null, { status: 202 });
   return json(Array.isArray(body) ? replies : replies[0]);
