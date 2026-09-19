@@ -22,7 +22,7 @@
   <a href="#s-unity" data-hub-unity-section hidden>Unity Editor</a>
   <a href="#s-builds">Builds</a>
   <a href="#s-drop">Team drop</a>
-  <a href="#s-shots">Screenshots</a>
+  <a href="#s-media">Media</a>
 </nav>
 
 <h1>Files &amp; builds</h1>
@@ -78,9 +78,9 @@
 </div>
 <div class="card"><ul class="files" id="filelist"></ul></div>
 
-<h2 id="s-shots">Latest screenshots</h2>
-<p class="lead">Proof shots pulled from recent PRs. If your repo is private these are mirrored copies, so they load for anyone who can reach this hub.</p>
-<div class="gallery" id="gallery" class="mt-3"></div>
+<h2 id="s-media">Recent media</h2>
+<p class="lead">The newest images and videos in <code>share/</code>, <code>clips/</code> and <code>meetings/</code>. Click one to see it full size or play it. To show the team a screenshot or a capture, drop it in above.</p>
+<div class="gallery mt-3" id="media"></div>
 
 <footer class="site" data-hub-shell></footer>
 
@@ -140,10 +140,21 @@ async function api(path, opts = {}) {
 let currentPrefix = "share/";
 let cache = {};
 
+/* An image row shows a thumbnail and a video row a play button; either opens
+   the viewer in hub.js. Anything else keeps its extension badge. */
+function fileIcon(f) {
+  const kind = hubMedia.kind(f);
+  if (!kind) return `<div class="f__icon">${esc(ext(f.name))}</div>`;
+  const url = hubMedia.url(f.key);
+  return kind === "image"
+    ? `<button class="f__icon f__icon--thumb" type="button" data-lightbox="${url}" data-alt="${esc(f.name)}" aria-label="View ${esc(f.name)}"><img src="${url}" alt="" loading="lazy"></button>`
+    : `<button class="f__icon f__icon--play" type="button" data-lightbox="${url}" data-lightbox-kind="video" aria-label="Play ${esc(f.name)}">▶</button>`;
+}
+
 function fileRow(f) {
   const dl = `/api/dl?key=${encodeURIComponent(f.key)}`;
   return `<li class="f" data-name="${esc(f.name.toLowerCase())}">
-    <div class="f__icon">${esc(ext(f.name))}</div>
+    ${fileIcon(f)}
     <div class="f__main">
       <div class="f__name">${esc(f.name)}</div>
       <div class="f__meta">${fmtSize(f.size)} · ${fmtDate(f.uploaded)}${f.uploader ? ` · ${esc(f.uploader)}` : ""}${f.folder && f.folder !== f.area ? ` · ${esc(f.folder)}/` : ""}</div>
@@ -294,27 +305,30 @@ async function uploadAll(files) {
   for (const f of files) await uploadOne(f);   // serial keeps progress honest
 }
 
-/* ---- screenshots --------------------------------------------------------- */
-async function loadShots() {
+/* ---- recent media -------------------------------------------------------- */
+/* Builds are zips, so only the areas people drop captures into. */
+const MEDIA_AREAS = ["share/", "clips/", "meetings/"];
+const MEDIA_SHOWN = 24;
+
+async function loadMedia() {
+  const el = $("media");
   try {
-    const res = await fetch("img/proof/manifest.json", { cache: "no-cache" });
-    if (!res.ok) throw new Error("no manifest");
-    const d = await res.json();
-    $("gallery").innerHTML = (d.shots || []).map((s) => `
-      <figure class="shot">
-        <img src="img/proof/${esc(s.file)}" data-lightbox="img/proof/${esc(s.file)}" alt="${esc(s.title)}" loading="lazy">
-        <figcaption class="shot__body">
-          <div class="shot__name">${esc(s.title)}</div>
-          <div class="shot__meta">${esc(s.ticket)} · <a href="${esc(s.prUrl)}">PR #${s.pr}</a> · ${fmtDate(s.date)}</div>
-        </figcaption>
-      </figure>`).join("") || '<p class="lead">No screenshots mirrored yet.</p>';
-  } catch {
-    $("gallery").innerHTML = '<p class="lead">Screenshot manifest missing — run <code>scripts/sync-proof-shots.sh</code>.</p>';
+    const lists = await Promise.all(MEDIA_AREAS.map((p) => api(`files?prefix=${encodeURIComponent(p)}`)));
+    const media = lists.flatMap((d) => d.files)
+      .filter((f) => hubMedia.kind(f))
+      .sort((a, b) => String(b.uploaded).localeCompare(String(a.uploaded)))
+      .slice(0, MEDIA_SHOWN);
+    el.innerHTML = media.length
+      ? media.map((f) => hubMedia.tile(f)).join("")
+      : '<p class="lead">No images or videos yet. Drop one into <code>share/</code> above.</p>';
+    hubMedia.watchVideos(el);
+  } catch (e) {
+    el.innerHTML = `<p class="lead">${e.message === "no-binding" ? "waiting on storage setup" : "couldn't load: " + esc(e.message)}</p>`;
   }
 }
 
 /* ---- wiring -------------------------------------------------------------- */
-function refreshAll() { loadBuilds(); loadList(currentPrefix); }
+function refreshAll() { loadBuilds(); loadList(currentPrefix); loadMedia(); }
 
 const drop = $("drop");
 ["dragenter", "dragover"].forEach((ev) =>
@@ -362,8 +376,8 @@ document.addEventListener("click", async (e) => {
 api("whoami")
   .then((d) => { if (d.email && d.email !== "unknown") $("who").textContent = `signed in as ${d.email} · uploads are recorded under your name`; })
   .catch(() => {});
-refreshAll();
-loadShots();
+// hub.js is deferred and provides hubMedia, so render once it has run.
+document.addEventListener("DOMContentLoaded", refreshAll);
 </script>
 </body>
 </html>

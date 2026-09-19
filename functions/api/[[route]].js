@@ -76,6 +76,18 @@ function cleanKey(raw) {
 }
 
 /**
+ * Whether a stored file may be shown inline rather than downloaded. The type
+ * is whatever the uploader claimed, so this is an allowlist: a text/html or
+ * image/svg+xml file shown inline would run its script on the hub's own
+ * origin. Raster images, video and audio can't run script, and they are all
+ * the Files page and the meeting player show inline.
+ */
+export function inlineAllowed(contentType) {
+  const type = String(contentType || "").split(";")[0].trim().toLowerCase();
+  return /^image\/(png|jpeg|gif|webp|avif)$/.test(type) || /^(video|audio)\/[\w.+-]+$/.test(type);
+}
+
+/**
  * Per-platform pointer rewritten on every publish. Zip names are unique
  * (semver + date + branch) and 409-protected; this one file is allowed to
  * move so "download latest" can stay a stable key.
@@ -316,9 +328,12 @@ export async function onRequest(context) {
       // must revalidate on every hit; everything else is immutable-by-409.
       headers.set("cache-control", isMutableBuildManifest(key) ? "private, no-cache" : "private, max-age=3600");
       headers.set("accept-ranges", "bytes");
+      // The browser must take the stored type at its word, never guess a
+      // scriptable one from the bytes.
+      headers.set("x-content-type-options", "nosniff");
 
       const name = key.slice(key.lastIndexOf("/") + 1);
-      const inline = url.searchParams.get("inline") === "1";
+      const inline = url.searchParams.get("inline") === "1" && inlineAllowed(headers.get("content-type"));
       headers.set(
         "content-disposition",
         `${inline ? "inline" : "attachment"}; filename="${name.replace(/"/g, "")}"`

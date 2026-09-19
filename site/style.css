@@ -430,10 +430,20 @@ footer.site {
   background: var(--surface2); color: var(--text-dim);
   font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase;
 }
+/* An image or video row shows the thing itself; the button opens the viewer. */
+button.f__icon { border: 0; padding: 0; cursor: zoom-in; overflow: hidden; font-size: 11px; }
+.f__icon--thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.f__icon--play { background: var(--text); color: var(--bg); }
 .f__main { min-width: 0; flex: 1; }
 .f__name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .f__meta { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); margin-top: 2px; }
 .f__actions { display: flex; gap: 6px; flex-shrink: 0; }
+/* On a phone the two buttons left the name a few characters wide; put them on
+   their own line instead. */
+@media (max-width: 600px) {
+  .f { flex-wrap: wrap; }
+  .f__actions { width: 100%; justify-content: flex-end; }
+}
 
 /* ---- builds -------------------------------------------------------------- */
 .builds { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
@@ -450,7 +460,7 @@ footer.site {
 .unity-install { border-top-color: var(--water); }
 .unity-install .build__tag { color: var(--water); }
 
-/* ---- screenshot gallery -------------------------------------------------- */
+/* ---- media gallery ------------------------------------------------------- */
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
 .shot {
   background: var(--surface); border: 1px solid var(--border);
@@ -464,13 +474,29 @@ footer.site {
 .shot__name { font-size: 13px; font-weight: 700; }
 .shot__meta { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); margin-top: 3px; }
 .shot__meta a { color: var(--accent); text-decoration: none; }
+/* The tile's preview is a button, so a keyboard can open the viewer too. */
+.shot__media {
+  position: relative; display: block; width: 100%; padding: 0; border: 0;
+  background: var(--surface2); cursor: zoom-in; overflow: hidden;
+}
+.shot video {
+  width: 100%; aspect-ratio: 16 / 10; object-fit: cover;
+  background: var(--surface2); display: block; pointer-events: none;
+}
+.shot__play {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center;
+  background: rgba(0, 0, 0, .6); color: #fff; font-size: 16px; padding-left: 3px;
+}
+.shot__media:focus-visible, button.f__icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .lightbox {
   position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, .82);
   display: none; place-items: center; padding: 32px; cursor: zoom-out;
 }
 .lightbox.is-open { display: grid; }
-.lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; }
+.lightbox img, .lightbox video { max-width: 100%; max-height: 100%; border-radius: 8px; }
+.lightbox video { background: #000; cursor: auto; }
 
 /* ---- meeting / transcript ------------------------------------------------ */
 .player { width: 100%; border-radius: 12px; background: #000; display: block; aspect-ratio: 16/9; }
@@ -1174,8 +1200,8 @@ ul.rows .t a:hover, .epic__name a:hover, .tl__name a:hover, .drop__sub a:hover {
 /* .lbtn is a plain button, so give it the same flex row .btn already has —
    same padding and font, so the queue's geometry does not shift. */
 
-/* ---- dashboard screenshot showcase --------------------------------------- */
-/* Newest shot large, the next four beside it. The dashboard is where people
+/* ---- dashboard media showcase -------------------------------------------- */
+/* Newest upload large, the next four beside it. The dashboard is where people
    land, so the most recent visible progress belongs above the fold-ish. */
 .shots { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 16px; margin-top: 24px; }
 .shots__minis { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-content: start; }
@@ -1185,10 +1211,10 @@ ul.rows .t a:hover, .epic__name a:hover, .tl__name a:hover, .drop__sub a:hover {
 }
 
 .shot { position: relative; }
-.shot img { transition: transform .45s ease; }
-.shot:hover img { transform: scale(1.04); }
-.shot--feature img { aspect-ratio: 16 / 9; }
-.shot--mini img { aspect-ratio: 4 / 3; }
+.shot img, .shot video { transition: transform .45s ease; }
+.shot:hover img, .shot:hover video { transform: scale(1.04); }
+.shot--feature img, .shot--feature video { aspect-ratio: 16 / 9; }
+.shot--mini img, .shot--mini video { aspect-ratio: 4 / 3; }
 .shot--mini .shot__body { padding: 10px 12px; }
 .shot--mini .shot__name { font-size: 12px; }
 

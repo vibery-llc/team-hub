@@ -23,7 +23,7 @@
   <a href="#s-timeline" data-needs-tracker>Timeline</a>
   <a href="#s-numbers">Numbers</a>
   <a href="#s-usage">Usage</a>
-  <a href="#s-shots">Screenshots</a>
+  <a href="#s-media">Media</a>
   <a href="#s-plan" data-needs-phases>P0–P5</a>
   <a href="#s-prs">Open PRs</a>
   <a href="#s-review" data-needs-tracker>In review</a>
@@ -97,13 +97,13 @@
   <div id="usage-by-person"></div>
 </div>
 
-<h2 id="s-shots">Latest from the build</h2>
-<p class="lead">Proof shots off the most recent PRs, newest first. Click any of them to open it full size — or see <a href="files.html#s-shots">the whole gallery</a>.</p>
+<h2 id="s-media">Latest from the team</h2>
+<p class="lead">The newest images and videos uploaded to the hub. Click one to see it full size or play it — or see <a href="files.html#s-media">everything recent</a>.</p>
 <div class="shots" id="shots"></div>
 
 <div class="btn-row">
   <a class="btn btn--lg btn--ghost" data-icon="↑" href="files.html#s-drop">Share a shot or a capture</a>
-  <a class="btn btn--lg btn--ghost" data-icon="→" href="files.html#s-shots">All screenshots</a>
+  <a class="btn btn--lg btn--ghost" data-icon="→" href="files.html#s-media">All media</a>
 </div>
 
 <h2 id="s-plan" data-needs-phases>The P0–P5 plan</h2>
@@ -448,35 +448,27 @@ fetch("/api/stats", { cache: "no-store" })
       '<p class="lead">Usage stats need <code>functions/api</code> deployed with the <code>HUB_FILES</code> binding — see README, "Usage stats".</p>';
   });
 
-/* ---- latest screenshots -------------------------------------------------- */
-/* The same manifest the Files page gallery reads, trimmed to the newest five.
-   The section stays empty if the manifest is missing rather than shouting
-   about it on the landing page. */
-fetch("img/proof/manifest.json", { cache: "no-cache" })
-  .then((r) => { if (!r.ok) throw new Error("no manifest"); return r.json(); })
-  .then((d) => {
-    const shots = (d.shots || []).slice(0, 5);
-    if (!shots.length) return;
-    const days = (iso) => Math.floor((Date.now() - new Date(iso)) / 864e5);
-    const when = (iso) => {
-      const n = days(iso);
-      return n <= 0 ? "today" : n === 1 ? "yesterday" : `${n}d ago`;
-    };
-    const card = (s, cls) => `
-      <figure class="shot ${cls}">
-        ${days(s.date) <= 7 ? '<span class="shot__flag">new</span>' : ""}
-        <img src="img/proof/${esc(s.file)}" data-lightbox="img/proof/${esc(s.file)}"
-             alt="${esc(s.title)}" loading="lazy">
-        <figcaption class="shot__body">
-          <div class="shot__name">${esc(s.title)}</div>
-          <div class="shot__meta">${esc(s.ticket)} · <a href="${esc(s.prUrl)}">PR #${s.pr}</a> · ${when(s.date)}</div>
-        </figcaption>
-      </figure>`;
-    document.getElementById("shots").innerHTML =
-      card(shots[0], "shot--feature") +
-      `<div class="shots__minis">${shots.slice(1).map((x) => card(x, "shot--mini")).join("")}</div>`;
+/* ---- latest media -------------------------------------------------------- */
+/* The newest five uploaded images and videos, from the same file store the
+   Files page reads. The section stays empty if the store is unreachable
+   rather than shouting about it on the landing page. */
+Promise.all(["share/", "clips/", "meetings/"].map((prefix) =>
+  fetch(`/api/files?prefix=${encodeURIComponent(prefix)}`).then((r) => (r.ok ? r.json() : { files: [] }))))
+  .then(async (lists) => {
+    await hubReady;
+    const media = lists.flatMap((d) => d.files || [])
+      .filter((f) => hubMedia.kind(f))
+      .sort((a, b) => String(b.uploaded).localeCompare(String(a.uploaded)))
+      .slice(0, 5);
+    if (!media.length) return;
+    const isNew = (f) => (Date.now() - new Date(f.uploaded)) / 864e5 <= 7;
+    const el = document.getElementById("shots");
+    el.innerHTML =
+      hubMedia.tile(media[0], "shot--feature", isNew(media[0]) ? "new" : "") +
+      `<div class="shots__minis">${media.slice(1).map((f) => hubMedia.tile(f, "shot--mini", isNew(f) ? "new" : "")).join("")}</div>`;
+    hubMedia.watchVideos(el);
   })
-  .catch(() => { /* no manifest yet — leave the section empty */ });
+  .catch(() => { /* no file store yet — leave the section empty */ });
 </script>
 </body>
 </html>

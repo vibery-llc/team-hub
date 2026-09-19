@@ -22,9 +22,9 @@ That is usually five SaaS subscriptions and a Slack channel. This is one repo.
 
 | | |
 |---|---|
-| **Dashboard** | Live GitHub + board stats, epic timeline, KPIs, screenshot strip, and a queue of agent-ready tickets with one-click launch into Claude Code, Codex or your clipboard |
+| **Dashboard** | Live GitHub + board stats, epic timeline, KPIs, the latest uploaded images and videos, and a queue of agent-ready tickets with one-click launch into Claude Code, Codex or your clipboard |
 | **Meetings** | Summary, decisions, action items with contextual buttons, publishable clips, and a searchable transcript with visible redaction markers |
-| **Files & builds** | Drag-and-drop upload to R2, chunked so a multi-gigabyte build works, per-platform "download latest", screenshot gallery |
+| **Files & builds** | Drag-and-drop upload to R2, chunked so a multi-gigabyte build works, per-platform "download latest", image and video previews |
 | **Activity (optional)** | Human-owned, agent-friendly workstream updates that stay concise and point to the true project records; absent until a human opts in |
 | **Setup / Guide / Resources** | Onboarding pages your team owns. Setup is a real agent-install walkthrough; the other two ship as examples to replace |
 | **MCP server** | The hub itself is an MCP server, so an agent in your repo can read meetings, action items and the ticket queue instead of a human relaying them |
@@ -166,27 +166,20 @@ Set `tracker: null` and the hub runs on GitHub alone. Every board-derived
 section is **removed from the page**, not left empty: the epic hero, the
 timeline, the agent queue, the In review and Recently done folds, the "tickets
 done" KPI, and each of their jump links. What is left is Open PRs, three GitHub
-KPIs, screenshots and Links — a smaller hub, not a broken one.
+KPIs, recent media and Links — a smaller hub, not a broken one.
 
 `kind: "jira"` is the only tracker adapter implemented today. The seam for
 others is in `scripts/fetch-data.mjs`.
 
-### The screenshot gallery stays current on its own
+### Uploaded images and videos preview in place
 
-`scripts/sync-proof-shots.sh` runs as part of `refresh.yml`'s scheduled fires,
-before the deploy, and commits any newly-mirrored images plus the rewritten
-`manifest.json` alongside the regular data refresh. Left to "run it when you
-remember," the gallery goes stale silently — which reads as *current and
-empty* rather than *out of date*, so this is scheduled rather than manual.
-
-It reads its source repo from `repo.slug` in `hub.config.js`, the same repo
-`fetch-data.mjs` already reads PRs and commits from — never a hardcoded
-literal. A fork with no repo configured gets a clean no-op, not a failure.
-
-The step is deliberately non-fatal: if the source repo is unreachable or the
-`GH_PAT` secret lacks access to it, the workflow logs a warning and the rest
-of the refresh and deploy continue. A stale gallery should never take the
-whole site's refresh down with it.
+The Files page and the dashboard show the images and videos people upload
+(`share/`, `clips/`, `meetings/`) as thumbnails; one click opens a picture
+full size or plays a video, with seeking, straight from R2. To put a
+screenshot or a capture in front of the team, upload it, by hand or with the
+MCP `upload_file` tool. `/api/dl` shows only raster images, video and audio
+inline; anything else, SVG and HTML included, downloads, so an upload can't
+run script on the hub.
 
 ### The agent launcher
 
@@ -228,7 +221,6 @@ scripts/
   fetch-data.mjs      refresh data.json from GitHub + the tracker
   add-activity.mjs    append a validated update after human opt-in
   publish-build.mjs   upload a locally-built artifact to builds/<platform>/
-  sync-proof-shots.sh mirror screenshots out of PR bodies, run by refresh.yml
 ```
 
 **`functions/` is at the project root on purpose.** With
@@ -482,7 +474,7 @@ only in files upstream does not compete for:
 |---|---|
 | `site/hub.config.js` | ships an example version |
 | `site/brand/` | ships a placeholder mark |
-| `site/data.json`, `site/activity.json`, `site/meetings/`, `site/img/proof/` | ships example data |
+| `site/data.json`, `site/activity.json`, `site/meetings/` | ships example data |
 | `wrangler.toml` | ships placeholder names |
 | `guide.html`, `resources.html` | ships example prose |
 

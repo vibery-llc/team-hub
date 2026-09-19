@@ -259,33 +259,108 @@
   };
 
 
-  /* 4. The lightbox.
+  /* 4. Uploaded media: what the hub previews, and the lightbox that shows it.
 
-     Both the dashboard and the Files page show proof shots, so the viewer lives
-     here rather than being copy-pasted into each. Any <img data-lightbox> opens
-     it; the overlay is created on first use so pages that never show an image
-     carry no extra markup. */
+     The dashboard and the Files page both preview images and videos people
+     upload, so the "is this media" test, the tile and the viewer live here
+     rather than being copy-pasted into each. `globalThis.hubMedia` is how the
+     pages reach them; hub.js is deferred, so a page calls it from
+     DOMContentLoaded or later.
+
+     The test reads the stored content type and falls back to the extension,
+     because the type is whatever the uploader's tool sent: a script's upload
+     can arrive as application/octet-stream or even form-urlencoded. The
+     fallback only decides what an <img> or <video> tries to show, and neither
+     can run script, so trusting the name here is safe. SVG is deliberately
+     not an image — /api/dl won't serve it inline (inlineAllowed). */
+  const IMAGE_TYPE = /^image\/(png|jpeg|gif|webp|avif)$/;
+  const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif)$/i;
+  const VIDEO_EXT = /\.(mp4|m4v|webm|mov)$/i;
+  const mediaKind = (f) => {
+    const type = String(f.contentType || "").split(";")[0].trim().toLowerCase();
+    if (IMAGE_TYPE.test(type)) return "image";
+    if (type.startsWith("video/")) return "video";
+    const name = f.name || f.key || "";
+    return IMAGE_EXT.test(name) ? "image" : VIDEO_EXT.test(name) ? "video" : null;
+  };
+  const mediaUrl = (key) => `/api/dl?key=${encodeURIComponent(key)}&inline=1`;
+  const ago = (iso) => {
+    const days = Math.floor((Date.now() - new Date(iso)) / 864e5);
+    return days <= 0 ? "today" : days === 1 ? "yesterday" : `${days}d ago`;
+  };
+
+  /* One gallery tile. A video tile shows its first frame, but only once it
+     scrolls into view (watchVideos): a page of clips must not start fetching
+     every one of them at load. */
+  const mediaTile = (f, cls = "", flag = "") => {
+    const kind = mediaKind(f);
+    const url = mediaUrl(f.key);
+    const preview = kind === "video"
+      ? `<video muted playsinline preload="none" data-src="${url}#t=0.1"></video><span class="shot__play" aria-hidden="true">▶</span>`
+      : `<img src="${url}" alt="" loading="lazy">`;
+    const meta = [f.folder, f.uploader, f.uploaded ? ago(f.uploaded) : ""].filter(Boolean).map(esc).join(" · ");
+    return `<figure class="shot ${cls}">${flag ? `<span class="shot__flag">${esc(flag)}</span>` : ""}
+      <button class="shot__media" type="button" data-lightbox="${url}"${kind === "video" ? ' data-lightbox-kind="video"' : ""}
+              data-alt="${esc(f.name)}" aria-label="${kind === "video" ? "Play" : "View"} ${esc(f.name)}">${preview}</button>
+      <figcaption class="shot__body">
+        <div class="shot__name">${esc(f.name)}</div>
+        <div class="shot__meta">${meta}</div>
+      </figcaption>
+    </figure>`;
+  };
+
+  const watchVideos = (root) => {
+    const videos = root.querySelectorAll("video[data-src]");
+    const load = (v) => { v.preload = "metadata"; v.src = v.dataset.src; v.removeAttribute("data-src"); };
+    if (!("IntersectionObserver" in window)) return videos.forEach(load);
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) { io.unobserve(e.target); load(e.target); }
+    }, { rootMargin: "200px" });
+    videos.forEach((v) => io.observe(v));
+  };
+
+  globalThis.hubMedia = { kind: mediaKind, url: mediaUrl, tile: mediaTile, watchVideos };
+
+  /* The viewer. Anything with data-lightbox opens it; data-lightbox-kind="video"
+     plays rather than shows a picture. Created on first use, so a page that
+     never opens it carries no extra markup. A picture closes on any click; a
+     video only on the backdrop or Escape, because clicks on the video are
+     play, pause and seek. Closing unloads the video so it stops downloading. */
   let box = null;
-  const openLightbox = (src, alt) => {
+  const closeLightbox = () => {
+    if (!box) return;
+    box.classList.remove("is-open");
+    const video = box.querySelector("video");
+    if (video) { video.pause(); video.removeAttribute("src"); video.load(); }
+    box.replaceChildren();
+  };
+  const openLightbox = (src, label, kind) => {
     if (!box) {
       box = document.createElement("div");
       box.className = "lightbox";
-      box.innerHTML = '<img alt="">';
-      box.addEventListener("click", () => box.classList.remove("is-open"));
+      box.addEventListener("click", (e) => { if (e.target.tagName !== "VIDEO") closeLightbox(); });
       document.body.appendChild(box);
     }
-    const img = box.firstElementChild;
-    img.src = src;
-    img.alt = alt || "";
+    let el;
+    if (kind === "video") {
+      el = document.createElement("video");
+      Object.assign(el, { controls: true, autoplay: true, playsInline: true, src });
+    } else {
+      el = document.createElement("img");
+      Object.assign(el, { src, alt: label || "" });
+    }
+    box.replaceChildren(el);
     box.classList.add("is-open");
   };
 
   document.addEventListener("click", (e) => {
-    const img = e.target.closest("img[data-lightbox]");
-    if (img) openLightbox(img.dataset.lightbox || img.currentSrc || img.src, img.alt);
+    const el = e.target.closest("[data-lightbox]");
+    if (!el) return;
+    e.preventDefault();
+    openLightbox(el.dataset.lightbox || el.currentSrc || el.src, el.dataset.alt ?? el.alt, el.dataset.lightboxKind);
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && box) box.classList.remove("is-open");
+    if (e.key === "Escape") closeLightbox();
   });
 
 
