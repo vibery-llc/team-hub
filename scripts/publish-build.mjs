@@ -405,7 +405,13 @@ async function whoami(baseUrl) {
   );
   let res;
   try { res = await apiFetch(baseUrl, "whoami"); }
-  catch (err) { throw err.status === 401 || err.status === 403 ? refused : err; }
+  catch (err) {
+    if (err.status !== 401 && err.status !== 403) throw err;
+    /* Keep the hub's own reason when it gave one: "issued for a different application" is
+       not something signing in again can fix, and hiding it sends people round in circles. */
+    if (/^\d{3} /.test(err.message)) throw refused;
+    throw new Error(`${refused.message}\n  The hub said: ${err.message}`);
+  }
   let body;
   try { body = await res.json(); } catch { body = null; }
   if (!body || typeof body.email !== "string") throw refused;

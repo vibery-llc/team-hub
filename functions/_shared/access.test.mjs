@@ -124,6 +124,15 @@ test("the team domain may be written with https:// and a trailing slash", async 
   assert.equal(who.ok, true);
 });
 
+test("Access's keys unreachable: a 503 naming the cause, not a 403 that blames the token", async () => {
+  const token = await (await signer("never-cached")).sign(claims()); // an unknown kid forces a key fetch
+  const loadKeys = async () => { throw new Error("certs -> 502"); };
+  const who = await accessIdentity(req({ "Cf-Access-Jwt-Assertion": token }), ENV, { loadKeys, now: now + 10 * 60 * 1000 });
+  assert.equal(who.ok, false);
+  assert.equal(who.status, 503);
+  assert.match(who.error, /couldn't fetch Access's signing keys \(certs -> 502\)/);
+});
+
 test("verifyAccessJwt rejects things that aren't JWTs", async () => {
   await assert.rejects(verifyAccessJwt("not-a-jwt", { teamDomain: TEAM, aud: AUD, loadKeys: keys(team), now }), /not a JWT/);
   await assert.rejects(verifyAccessJwt("a.b.c", { teamDomain: TEAM, aud: AUD, loadKeys: keys(team), now }), /unreadable JWT/);

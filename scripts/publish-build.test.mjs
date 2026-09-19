@@ -246,6 +246,21 @@ test("Access turning the run away with a 401 (Managed OAuth on) fails before any
   }
 });
 
+test("a refusal with a reason from the hub keeps that reason", async () => {
+  const stub = await startStub({
+    "GET /api/whoami": { status: 403, body: { error: "Cloudflare Access token rejected: issued for a different application" } },
+    ...UPLOAD_ROUTES,
+  });
+  try {
+    const run = await runScript([zipPath, "windows"], { HUB_URL: stub.url });
+    assert.equal(run.code, 1);
+    assert.match(run.stderr, /The hub said: Cloudflare Access token rejected: issued for a different application/);
+    assert.deepEqual(stub.requests, ["GET /api/whoami"]);
+  } finally {
+    await stub.close();
+  }
+});
+
 test("Access turning the run away (its login page instead of JSON) fails before any upload", async () => {
   const stub = await startStub({
     "GET /api/whoami": { status: 200, type: "text/html", body: "<html>Sign in with Cloudflare Access</html>" },

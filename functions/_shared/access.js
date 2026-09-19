@@ -41,7 +41,13 @@ async function keyFor(kid, domain, load, now) {
   const fresh = cachedKeys.domain === domain && now - cachedKeys.at < KEY_TTL_MS;
   let key = fresh ? cachedKeys.keys.find((k) => k.kid === kid) : undefined;
   if (!key && !(fresh && now - cachedKeys.at < REFETCH_MIN_MS)) {
-    cachedKeys = { domain, keys: await load(domain), at: now };
+    let keys;
+    try { keys = await load(domain); }
+    catch (err) {
+      /* Our problem, not the caller's: say so with a 5xx rather than refusing their token. */
+      throw Object.assign(new Error(`couldn't fetch Access's signing keys (${err.message})`), { unavailable: true });
+    }
+    cachedKeys = { domain, keys, at: now };
     key = cachedKeys.keys.find((k) => k.kid === kid);
   }
   return key;
@@ -87,7 +93,8 @@ export async function verifyAccessJwt(token, { teamDomain, aud, loadKeys = fetch
 
 /**
  * { ok: true, email } when the request may proceed; { ok: false, status, error } when it must be
- * refused (403 for the request, 500 for a half-configured deployment). `deps` exists for tests:
+ * refused (403 for the request, 500 for a half-configured deployment, 503 when Access's keys
+ * can't be fetched). `deps` exists for tests:
  * { loadKeys, now }.
  */
 export async function accessIdentity(request, env, deps = {}) {
@@ -106,6 +113,7 @@ export async function accessIdentity(request, env, deps = {}) {
     const payload = await verifyAccessJwt(token, { teamDomain, aud, ...deps });
     return { ok: true, email: typeof payload.email === "string" ? payload.email : "" };
   } catch (err) {
+    if (err.unavailable) return { ok: false, status: 503, error: `Cloudflare Access token not checked: ${err.message}` };
     return { ok: false, status: 403, error: `Cloudflare Access token rejected: ${err.message}` };
   }
 }
