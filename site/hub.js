@@ -272,7 +272,7 @@
      can arrive as application/octet-stream or even form-urlencoded. The
      fallback only decides what an <img> or <video> tries to show, and neither
      can run script, so trusting the name here is safe. SVG is deliberately
-     not an image — /api/dl won't serve it inline (inlineAllowed). */
+     not an image — /api/dl won't serve it inline (inlineType). */
   const IMAGE_TYPE = /^image\/(png|jpeg|gif|webp|avif)$/;
   const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif)$/i;
   const VIDEO_EXT = /\.(mp4|m4v|webm|mov)$/i;
@@ -325,19 +325,25 @@
      plays rather than shows a picture. Created on first use, so a page that
      never opens it carries no extra markup. A picture closes on any click; a
      video only on the backdrop or Escape, because clicks on the video are
-     play, pause and seek. Closing unloads the video so it stops downloading. */
+     play, pause and seek. Closing unloads the video so it stops downloading.
+     Focus moves into the viewer and back out on close: left on the tile
+     behind it, Space would click the tile again and restart the video. */
   let box = null;
+  let opener = null;
   const closeLightbox = () => {
-    if (!box) return;
+    if (!box || !box.classList.contains("is-open")) return;
     box.classList.remove("is-open");
     const video = box.querySelector("video");
     if (video) { video.pause(); video.removeAttribute("src"); video.load(); }
     box.replaceChildren();
+    if (opener && opener.isConnected) opener.focus();
+    opener = null;
   };
   const openLightbox = (src, label, kind) => {
     if (!box) {
       box = document.createElement("div");
       box.className = "lightbox";
+      box.tabIndex = -1;
       box.addEventListener("click", (e) => { if (e.target.tagName !== "VIDEO") closeLightbox(); });
       document.body.appendChild(box);
     }
@@ -351,12 +357,14 @@
     }
     box.replaceChildren(el);
     box.classList.add("is-open");
+    (kind === "video" ? el : box).focus();
   };
 
   document.addEventListener("click", (e) => {
     const el = e.target.closest("[data-lightbox]");
     if (!el) return;
     e.preventDefault();
+    opener = el;
     openLightbox(el.dataset.lightbox || el.currentSrc || el.src, el.dataset.alt ?? el.alt, el.dataset.lightboxKind);
   });
   document.addEventListener("keydown", (e) => {

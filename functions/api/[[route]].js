@@ -76,15 +76,25 @@ function cleanKey(raw) {
 }
 
 /**
- * Whether a stored file may be shown inline rather than downloaded. The type
- * is whatever the uploader claimed, so this is an allowlist: a text/html or
- * image/svg+xml file shown inline would run its script on the hub's own
- * origin. Raster images, video and audio can't run script, and they are all
- * the Files page and the meeting player show inline.
+ * The type to show a stored file inline as, or null to make it download. The
+ * stored type is whatever the uploader claimed, so this is an allowlist of
+ * types that can't run script: a text/html or image/svg+xml file shown inline
+ * would run its script on the hub's own origin. Raster images, video and
+ * audio are all the Files page and the meeting player show inline.
+ *
+ * The caller must send the returned type, not the stored header: browsers
+ * read Content-Type as a comma-separated list and use the last entry, so a
+ * stored "video/mp4;x=,text/html" passes a check on its first part and still
+ * renders as HTML.
  */
-export function inlineAllowed(contentType) {
+const INLINE_TYPES = new Set([
+  "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif",
+  "video/mp4", "video/webm", "video/quicktime", "video/ogg", "video/x-m4v",
+  "audio/mpeg", "audio/mp4", "audio/aac", "audio/ogg", "audio/wav", "audio/webm", "audio/x-m4a", "audio/flac",
+]);
+export function inlineType(contentType) {
   const type = String(contentType || "").split(";")[0].trim().toLowerCase();
-  return /^image\/(png|jpeg|gif|webp|avif)$/.test(type) || /^(video|audio)\/[\w.+-]+$/.test(type);
+  return INLINE_TYPES.has(type) ? type : null;
 }
 
 /**
@@ -333,7 +343,9 @@ export async function onRequest(context) {
       headers.set("x-content-type-options", "nosniff");
 
       const name = key.slice(key.lastIndexOf("/") + 1);
-      const inline = url.searchParams.get("inline") === "1" && inlineAllowed(headers.get("content-type"));
+      const shownAs = url.searchParams.get("inline") === "1" ? inlineType(headers.get("content-type")) : null;
+      const inline = shownAs !== null;
+      if (inline) headers.set("content-type", shownAs);
       headers.set(
         "content-disposition",
         `${inline ? "inline" : "attachment"}; filename="${name.replace(/"/g, "")}"`

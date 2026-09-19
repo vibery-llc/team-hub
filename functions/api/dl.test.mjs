@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { inlineAllowed, onRequest } from "./[[route]].js";
+import { inlineType, onRequest } from "./[[route]].js";
 
 const BODY = "0123456789";
 
@@ -69,6 +69,18 @@ test("anything that could run script downloads instead, even with ?inline=1", as
   }
 });
 
+test("a stored type that smuggles html after a comma can't render inline", async () => {
+  // Browsers take the LAST entry of a comma-separated Content-Type, so the
+  // header sent must be the checked type, never the uploader's string.
+  const res = await download("share/a.mp4", "video/mp4;x=,text/html");
+  assert.match(res.headers.get("content-disposition"), /^inline;/);
+  assert.equal(res.headers.get("content-type"), "video/mp4", "must send the validated type, not the stored header");
+  for (const type of ["text/html,video/mp4", "video/x+xml", "video/mp4+xml", "audio/svg+xml"]) {
+    const r = await download("share/b.mp4", type);
+    assert.match(r.headers.get("content-disposition"), /^attachment;/, `${type} must not render inline`);
+  }
+});
+
 test("every download says nosniff, and a plain download stays an attachment", async () => {
   const res = await download("clips/clip.mp4", "video/mp4", { inline: false });
   assert.equal(res.headers.get("x-content-type-options"), "nosniff");
@@ -82,10 +94,10 @@ test("a range request still answers 206 so video can seek", async () => {
   assert.equal(await res.text(), "2345");
 });
 
-test("inlineAllowed reads only the media type, case-insensitively", () => {
-  assert.equal(inlineAllowed("IMAGE/PNG"), true);
-  assert.equal(inlineAllowed("video/mp4; codecs=avc1"), true);
-  assert.equal(inlineAllowed("image/svg+xml"), false);
-  assert.equal(inlineAllowed(""), false);
-  assert.equal(inlineAllowed(undefined), false);
+test("inlineType reads only the media type, case-insensitively", () => {
+  assert.equal(inlineType("IMAGE/PNG"), "image/png");
+  assert.equal(inlineType("video/mp4; codecs=avc1"), "video/mp4");
+  assert.equal(inlineType("image/svg+xml"), null);
+  assert.equal(inlineType(""), null);
+  assert.equal(inlineType(undefined), null);
 });

@@ -140,15 +140,26 @@ async function api(path, opts = {}) {
 let currentPrefix = "share/";
 let cache = {};
 
+/* One request per prefix per refresh: the file list, the builds cards and
+   Recent media all read the same listings. */
+let listings = {};
+const listing = (prefix) => (listings[prefix] ||= api(`files?prefix=${encodeURIComponent(prefix)}`));
+
 /* An image row shows a thumbnail and a video row a play button; either opens
-   the viewer in hub.js. Anything else keeps its extension badge. */
+   the viewer in hub.js. Anything else keeps its extension badge, as does
+   everything if hub.js hasn't loaded. There is no resized copy to fetch, so a
+   thumbnail is the whole file: past THUMB_MAX a row shows a badge that still
+   opens the viewer, rather than pulling megabytes into a 30px square. */
+const THUMB_MAX = 4 * 1024 * 1024;
 function fileIcon(f) {
-  const kind = hubMedia.kind(f);
+  const kind = globalThis.hubMedia?.kind(f);
   if (!kind) return `<div class="f__icon">${esc(ext(f.name))}</div>`;
   const url = hubMedia.url(f.key);
-  return kind === "image"
-    ? `<button class="f__icon f__icon--thumb" type="button" data-lightbox="${url}" data-alt="${esc(f.name)}" aria-label="View ${esc(f.name)}"><img src="${url}" alt="" loading="lazy"></button>`
-    : `<button class="f__icon f__icon--play" type="button" data-lightbox="${url}" data-lightbox-kind="video" aria-label="Play ${esc(f.name)}">▶</button>`;
+  if (kind === "video") {
+    return `<button class="f__icon f__icon--play" type="button" data-lightbox="${url}" data-lightbox-kind="video" aria-label="Play ${esc(f.name)}">▶</button>`;
+  }
+  const face = f.size <= THUMB_MAX ? `<img src="${url}" alt="" loading="lazy">` : esc(ext(f.name));
+  return `<button class="f__icon f__icon--thumb" type="button" data-lightbox="${url}" data-alt="${esc(f.name)}" aria-label="View ${esc(f.name)}">${face}</button>`;
 }
 
 function fileRow(f) {
@@ -170,7 +181,7 @@ async function loadList(prefix) {
   const el = $("filelist");
   el.innerHTML = '<li class="empty">loading…</li>';
   try {
-    const d = await api(`files?prefix=${encodeURIComponent(prefix)}`);
+    const d = await listing(prefix);
     cache[prefix] = d.files;
     renderList();
   } catch (e) {
@@ -189,7 +200,7 @@ function renderList() {
 
 async function loadBuilds() {
   try {
-    const d = await api("files?prefix=builds/");
+    const d = await listing("builds/");
     const files = d.files;
     // builds/<platform>/<file>; a file dropped straight into builds/ is "general".
     const groups = {};
@@ -296,13 +307,12 @@ async function uploadOne(file) {
     }
   } catch (e) {
     ui.set(1, e.message === "no-binding" ? "storage not connected" : `failed — ${e.message}`, "err");
-    return;
   }
-  refreshAll();
 }
 
 async function uploadAll(files) {
   for (const f of files) await uploadOne(f);   // serial keeps progress honest
+  refreshAll();                                 // once, not once per file
 }
 
 /* ---- recent media -------------------------------------------------------- */
@@ -312,8 +322,9 @@ const MEDIA_SHOWN = 24;
 
 async function loadMedia() {
   const el = $("media");
+  if (!globalThis.hubMedia) return;
   try {
-    const lists = await Promise.all(MEDIA_AREAS.map((p) => api(`files?prefix=${encodeURIComponent(p)}`)));
+    const lists = await Promise.all(MEDIA_AREAS.map(listing));
     const media = lists.flatMap((d) => d.files)
       .filter((f) => hubMedia.kind(f))
       .sort((a, b) => String(b.uploaded).localeCompare(String(a.uploaded)))
@@ -328,7 +339,7 @@ async function loadMedia() {
 }
 
 /* ---- wiring -------------------------------------------------------------- */
-function refreshAll() { loadBuilds(); loadList(currentPrefix); loadMedia(); }
+function refreshAll() { listings = {}; loadBuilds(); loadList(currentPrefix); loadMedia(); }
 
 const drop = $("drop");
 ["dragenter", "dragover"].forEach((ev) =>
