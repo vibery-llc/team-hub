@@ -21,6 +21,15 @@ pages_build_output_dir = "site"
 # person using it, so it should say which hub they are talking to.
 [vars]
 HUB_NAME = "team-hub"
+# Your Cloudflare Access team and application. With both set, the Functions
+# check the JWT Access signs onto every request and take the person's email
+# from inside it, instead of trusting a plain header (functions/_shared/access.js).
+# Cloudflare requires this before Managed OAuth is turned on for an MCP server.
+# The team domain is the <team>.cloudflareaccess.com host Access signs people in
+# on; the audience is the application's "Application Audience (AUD) Tag".
+# Neither is secret. Leave them out and the header is trusted, as before.
+# ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
+# ACCESS_AUD = "your-application-aud-tag"
 
 # Backs functions/api/ — the team drop, build downloads and meeting media.
 # Large files cannot live in the deploy itself: Pages refuses any static asset
@@ -36,6 +45,9 @@ bucket_name = "team-hub-files"
 
 [env.preview.vars]
 HUB_NAME = "team-hub"
+# Same Access application as production (it covers the preview wildcard too).
+# ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
+# ACCESS_AUD = "your-application-aud-tag"
 
 [[env.preview.r2_buckets]]
 binding = "HUB_FILES"

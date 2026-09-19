@@ -53,7 +53,7 @@ jobs:
       - name: Test gate
         run: |
           set -euo pipefail
-          for t in scripts/*.test.mjs functions/api/*.test.mjs; do
+          for t in scripts/*.test.mjs functions/*/*.test.mjs; do
             [ -f "${t}" ] && node --test "${t}"
           done
 

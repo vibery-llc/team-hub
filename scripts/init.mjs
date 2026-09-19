@@ -267,9 +267,14 @@ ${bold("  4. Cloudflare Access — do this by hand")}
        Preview deploys live on the wildcard; an app covering only the apex
        leaves every preview URL wide open.
     c. Add a policy allowing the email addresses on your team.
-    d. For agents: Access → Service Auth → create a service token, then add it
-       to the same application's policy with Action: Service Auth. That is what
-       lets the MCP endpoint in functions/mcp/ authenticate.
+    d. For agents: open the application's Advanced settings and turn on
+       Managed OAuth. That lets each person's agent sign in to the MCP
+       endpoint in functions/mcp/ as themselves, in the browser. Before you
+       do, set ACCESS_TEAM_DOMAIN and ACCESS_AUD in wrangler.toml so the
+       Functions check the token Access signs (Cloudflare requires it).
+    e. Only for a build machine with nobody at it: Access → Service Auth →
+       create a service token, then add it to the same application's policy
+       with Action: Service Auth.
 
 ${bold("  5. Still the example's — init cannot guess these")}
 

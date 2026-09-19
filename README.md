@@ -263,8 +263,7 @@ this after building locally.
 
 ```bash
 export HUB_URL=https://my-hub.pages.dev
-export HUB_ACCESS_ID=...       # Access service token Client Id
-export HUB_ACCESS_SECRET=...   # Access service token Client Secret
+cloudflared access login "$HUB_URL"    # once; opens the browser
 
 node scripts/publish-build.mjs ./dist/MyGame-1.4.0.zip windows
 ```
@@ -291,10 +290,13 @@ and `PlayerSettings.bundleVersion` on the configured ref of the team repo;
 the config block is the fallback when GitHub is unreachable. The block is
 documented where you would set it, in `site/hub.config.js`.
 
-`HUB_ACCESS_ID` and `HUB_ACCESS_SECRET` are the same kind of Cloudflare
-Access service token described below for the MCP server — create one under
-Access → Service Auth. The script reads both from the environment and never
-logs or prints them.
+The script signs in as you through [`cloudflared`](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/),
+so the upload is recorded against your email, and it prints who it is
+publishing as before any bytes move. A build machine with nobody at it sets
+`HUB_ACCESS_ID` and `HUB_ACCESS_SECRET` to an Access service token instead
+(Access → Service Auth, then add it to the application's policy with Action:
+Service Auth). The token wins when both are present, and the script never logs
+or prints it.
 
 ## Connecting an agent (MCP)
 
@@ -307,18 +309,34 @@ Hand-rolled JSON-RPC rather than the MCP SDK, because this repo has no build
 step and a dependency would mean adding `package.json` plus an npm install for
 four protocol methods.
 
-Machine clients authenticate with a Cloudflare Access **service token**, which
-Access validates before the request reaches the Function — which is why there is
-no second token check in the code.
+Each person's agent signs in as that person, in the browser, the same way
+they reach the site. That needs one setting: in Zero Trust, open the Access
+application's **Advanced settings** and turn on **Managed OAuth**. Access then
+answers an agent that has no token with a 401 that starts the standard MCP
+sign-in, and forwards the person's email on every request after. Before turning
+it on, set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` in `wrangler.toml` (both
+documented there). Cloudflare requires an MCP server behind Managed OAuth to
+check the JWT Access signs onto each request, and with those two set, the
+Functions do: a request without a valid one is refused, and the email is read
+from inside it rather than from a header anyone could send.
 
 ```bash
-claude mcp add --transport http my-hub https://my-hub.pages.dev/mcp \
-  --header "CF-Access-Client-Id: $HUB_ACCESS_ID" \
-  --header "CF-Access-Client-Secret: $HUB_ACCESS_SECRET"
+# Claude Code
+claude mcp add --transport http --scope user my-hub https://my-hub.pages.dev/mcp
+claude mcp login my-hub
+
+# Codex
+codex mcp add my-hub --url https://my-hub.pages.dev/mcp
+codex mcp login my-hub
+
+# Cursor: add { "url": "https://my-hub.pages.dev/mcp" } under mcpServers in
+# ~/.cursor/mcp.json, then sign in from Settings → MCP (or `cursor-agent mcp login my-hub`)
 ```
 
-Uploads made through a service token are recorded against the token, not a
-person.
+Uploads an agent makes are recorded against the person who signed in.
+`start_large_upload` hands the agent plain HTTPS requests to make for the
+chunks; the agent authenticates those with `cloudflared access curl`, as
+above.
 
 ## Optional shared activity log
 
