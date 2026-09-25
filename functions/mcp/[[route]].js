@@ -309,25 +309,7 @@ async function callTool(name, args, { env, request, identity }) {
     case "latest_build": {
       if (!bucket) return fail("R2 bucket not bound");
       const listed = await bucket.list({ prefix: "builds/", limit: 1000, include: ["customMetadata"] });
-      const groups = {};
-      for (const o of listed.objects) {
-        const parts = o.key.split("/");
-        const platform = parts.length > 2 ? parts[1] : "general";
-        if (args.platform && platform !== args.platform) continue;
-        (groups[platform] ||= []).push(o);
-      }
-      const latest = Object.entries(groups).map(([platform, objs]) => {
-        objs.sort((a, b) => String(b.uploaded).localeCompare(String(a.uploaded)));
-        const o = objs[0];
-        return {
-          platform,
-          key: o.key,
-          size: o.size,
-          uploaded: o.uploaded,
-          downloadUrl: `/api/dl?key=${encodeURIComponent(o.key)}`,
-          olderCount: objs.length - 1,
-        };
-      });
+      const latest = latestBuilds(listed.objects, args.platform);
       return latest.length
         ? ok(latest)
         : ok({ note: "No builds uploaded yet — builds/ is empty.", builds: [] });
@@ -415,6 +397,32 @@ async function handleRpc(msg, ctx) {
   }
   if (method === "ping") return rpcResult(id, {});
   return rpcError(id, -32601, `method not found: ${method}`);
+}
+
+/* The newest build per platform, from an R2 listing of builds/. R2 gives `uploaded` as a Date, and
+   String(Date) starts with the weekday, so sorting those strings picked "Thu" over "Fri". Compare
+   the times instead. Each platform's latest.json is a pointer publish-build rewrites, not a build. */
+export function latestBuilds(objects, platformFilter) {
+  const groups = {};
+  for (const o of objects) {
+    const parts = o.key.split("/");
+    const platform = parts.length > 2 ? parts[1] : "general";
+    if (platformFilter && platform !== platformFilter) continue;
+    if (parts[parts.length - 1] === "latest.json") continue;
+    (groups[platform] ||= []).push(o);
+  }
+  return Object.entries(groups).map(([platform, objs]) => {
+    objs.sort((a, b) => new Date(b.uploaded) - new Date(a.uploaded));
+    const o = objs[0];
+    return {
+      platform,
+      key: o.key,
+      size: o.size,
+      uploaded: o.uploaded,
+      downloadUrl: `/api/dl?key=${encodeURIComponent(o.key)}`,
+      olderCount: objs.length - 1,
+    };
+  });
 }
 
 /* Streamable HTTP clients (Claude Code, Codex, Cursor) open a GET asking for text/event-stream to
