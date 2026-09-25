@@ -417,8 +417,19 @@ async function handleRpc(msg, ctx) {
   return rpcError(id, -32601, `method not found: ${method}`);
 }
 
+/* Streamable HTTP clients (Claude Code, Codex, Cursor) open a GET asking for text/event-stream to
+   listen for server messages. This server has none to send, so the spec's answer is 405, which
+   tells the client not to open that stream. Answering 200 JSON instead made clients treat it as a
+   stream that ended at once and reconnect in a loop, which used up the Functions request quota. */
+export function wantsEventStream(request) {
+  return request.method === "GET" && /text\/event-stream/i.test(request.headers.get("accept") || "");
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
+  if (wantsEventStream(request)) {
+    return new Response(null, { status: 405, headers: { allow: "POST" } });
+  }
 
   /* Who Cloudflare Access verified this request as (see functions/_shared/access.js). A
      service token carries no email, hence the fallback. */
