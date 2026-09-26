@@ -43,7 +43,7 @@
 <div class="builds" id="builds-latest" class="mt-3"></div>
 
 <h2>Archived builds</h2>
-<div class="card"><ul class="files" id="builds-archive"></ul></div>
+<div class="card"><ul class="files" id="builds-archive" data-show="5"></ul></div>
 
 <h2 id="s-drop">Team drop</h2>
 <p class="lead">Drag files anywhere onto the box. Big files upload in chunks, so a multi-gigabyte build is fine.</p>
@@ -76,11 +76,11 @@
   <span class="toolbar__spacer"></span>
   <input class="search" id="filter" placeholder="filter by name…">
 </div>
-<div class="card"><ul class="files" id="filelist"></ul></div>
+<div class="card"><ul class="files" id="filelist" data-show="10"></ul></div>
 
 <h2 id="s-media">Recent media</h2>
 <p class="lead">The newest images and videos in <code>share/</code>, <code>clips/</code> and <code>meetings/</code>. Click one to see it full size or play it. To show the team a screenshot or a capture, drop it in above.</p>
-<div class="gallery mt-3" id="media"></div>
+<div class="gallery mt-3" id="media" data-show="12"></div>
 
 <footer class="site" data-hub-shell></footer>
 
@@ -318,7 +318,6 @@ async function uploadAll(files) {
 /* ---- recent media -------------------------------------------------------- */
 /* Builds are zips, so only the areas people drop captures into. */
 const MEDIA_AREAS = ["share/", "clips/", "meetings/"];
-const MEDIA_SHOWN = 24;
 
 async function loadMedia() {
   const el = $("media");
@@ -327,8 +326,7 @@ async function loadMedia() {
     const lists = await Promise.all(MEDIA_AREAS.map(listing));
     const media = lists.flatMap((d) => d.files)
       .filter((f) => hubMedia.kind(f))
-      .sort((a, b) => String(b.uploaded).localeCompare(String(a.uploaded)))
-      .slice(0, MEDIA_SHOWN);
+      .sort((a, b) => String(b.uploaded).localeCompare(String(a.uploaded)));
     el.innerHTML = media.length
       ? media.map((f) => hubMedia.tile(f)).join("")
       : '<p class="lead">No images or videos yet. Drop one into <code>share/</code> above.</p>';

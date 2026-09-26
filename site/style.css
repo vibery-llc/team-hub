@@ -419,6 +419,9 @@ footer.site {
 
 /* ---- file list ----------------------------------------------------------- */
 .files { list-style: none; }
+/* Lists capped by hub.js section 5b: hidden items and the button must beat any display rule. */
+[data-show] > [hidden], .show-all[hidden] { display: none !important; }
+.show-all { margin-top: 12px; }
 .f {
   display: flex; gap: 12px; align-items: center;
   padding: 11px 4px; border-bottom: 1px solid var(--border); min-width: 0;
