@@ -258,6 +258,8 @@ async function fetchJira() {
     .map((i) => ({ key: i.key, summary: i.fields.summary, url: `${JIRA_BASE}/browse/${i.key}` }));
   const inReview = issues
     .filter((i) => i.fields.status.name === "In Review")
+    // Newest first, like doneRecent: the dashboard shows the first five and folds the rest.
+    .sort((a, b) => new Date(b.fields.updated) - new Date(a.fields.updated))
     .map((i) => ({ key: i.key, summary: i.fields.summary, url: `${JIRA_BASE}/browse/${i.key}` }));
   return {
     fetchedAt: new Date().toISOString(),
