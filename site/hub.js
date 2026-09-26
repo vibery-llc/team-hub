@@ -399,6 +399,41 @@
   openHashFold();
   window.addEventListener("hashchange", openHashFold);
 
+  /* 5b. Long lists show the newest few, with a button for the rest.
+
+     A list opts in with data-show="N" and is expected to be newest first. The
+     pages fill their lists from fetched JSON after this runs and re-render
+     them on refresh or filter, so this watches each list and re-applies
+     itself whenever its items change. The button sits after the list, never
+     inside it, so a <ul> keeps only <li> children and re-applying can't loop.
+     Once someone opens a list it stays open across re-renders on that visit. */
+  const opened = new Set();
+  const showSome = (list) => {
+    const limit = parseInt(list.dataset.show, 10);
+    const items = [...list.children];
+    const older = items.length - limit;
+    const key = list.id || list.dataset.show;
+    let btn = list.nextElementSibling;
+    if (!btn || !btn.classList.contains("show-all")) {
+      btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn--ghost btn--sm show-all";
+      btn.addEventListener("click", () => {
+        if (opened.has(key)) opened.delete(key); else opened.add(key);
+        showSome(list);
+      });
+      list.after(btn);
+    }
+    const open = opened.has(key);
+    items.forEach((el, i) => { el.hidden = !open && i >= limit; });
+    btn.hidden = !(limit >= 0 && older > 0);
+    btn.textContent = open ? "Show fewer" : `Show all ${items.length} (${older} older)`;
+  };
+  for (const list of document.querySelectorAll("[data-show]")) {
+    showSome(list);
+    new MutationObserver(() => showSome(list)).observe(list, { childList: true });
+  }
+
   /* 6. Unity Editor + player semver — only for teams whose project is a
      Unity game, which is what a `game` block in hub.config.js declares.
 
