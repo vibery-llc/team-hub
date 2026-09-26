@@ -428,6 +428,8 @@
     items.forEach((el, i) => { el.hidden = !open && i >= limit; });
     btn.hidden = !(limit >= 0 && older > 0);
     btn.textContent = open ? "Show fewer" : `Show all ${items.length} (${older} older)`;
+    btn.setAttribute("aria-expanded", String(open));
+    if (list.id) btn.setAttribute("aria-controls", list.id);
   };
   for (const list of document.querySelectorAll("[data-show]")) {
     showSome(list);
