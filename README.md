@@ -68,6 +68,26 @@ project records. The active view and navigation item are absent until enabled.
 
 ![Activity in light mode](docs/screenshots/activity-light.png)
 
+### Pipeline scoreboard, after opt-in
+
+An at-a-glance status strip showing PASS/WAIT/FAIL gauges with evidence. Read
+from a `snapshot.json` you maintain, rendered on the dashboard homepage.
+
+Converges with existing hub KPI patterns — no competing ladder-style strips.
+Supports project theming via `hub.config.js` and export to shareable HTML/PNG.
+
+Enable in `hub.config.js`:
+
+```javascript
+pipelineScoreboard: {
+  enabled: true,
+  board: "your-project-board-id",
+  snapshotPath: "snapshot.json",
+}
+```
+
+See `docs/pipeline-scoreboard-schema.md` for snapshot format and theming options.
+
 ### Setup
 
 An onboarding page that walks a teammate from nothing to a working agent.

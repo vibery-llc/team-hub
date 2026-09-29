@@ -1374,3 +1374,145 @@ body::before {
 .cautions li { font-size: 14px; }
 .cautions { margin: 8px 0 0 1.2em; }
 .clip .btn-row { margin: 0; gap: 6px; }
+
+/* ---- pipeline scoreboard ------------------------------------------------- */
+/* At-a-glance status strip showing PASS/WAIT/FAIL gauges with evidence.
+   Enabled via hub.config.js pipelineScoreboard. */
+.scoreboard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin: 0 0 32px;
+}
+.scoreboard[hidden] { display: none; }
+
+.scoreboard__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.scoreboard__title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  margin: 0;
+}
+.scoreboard__title::before { display: none; }
+
+.scoreboard__meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.scoreboard__score {
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.scoreboard__gauges {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.gauge {
+  --gauge-color: var(--text-dim);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--gauge-color);
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-width: 0;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gauge:hover {
+  border-left-width: 4px;
+  border-left-color: var(--gauge-color);
+  box-shadow: 0 4px 12px -6px color-mix(in srgb, var(--gauge-color) 40%, transparent);
+}
+
+.gauge--pass {
+  --gauge-color: var(--green);
+}
+
+.gauge--wait {
+  --gauge-color: var(--amber);
+}
+
+.gauge--fail {
+  --gauge-color: #dc2626;
+}
+
+.gauge__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.gauge__label {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.gauge__status {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--gauge-color);
+  background: color-mix(in srgb, var(--gauge-color) 12%, transparent);
+  border-radius: 4px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+.gauge__evidence {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.gauge__evidence a {
+  color: var(--gauge-color);
+  text-decoration: none;
+}
+
+.gauge__evidence a:hover {
+  text-decoration: underline;
+}
+
+.gauge__detail {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+@media (max-width: 760px) {
+  .scoreboard__gauges {
+    grid-template-columns: 1fr;
+  }
+}

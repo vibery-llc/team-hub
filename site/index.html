@@ -38,6 +38,18 @@
   <a class="btn btn--lg btn--ghost" data-icon="→" href="meetings.html">Latest meeting</a>
 </section>
 
+<!-- Pipeline Scoreboard — enabled via hub.config.js pipelineScoreboard -->
+<section id="pipeline-scoreboard" class="scoreboard" hidden aria-label="Pipeline status">
+  <div class="scoreboard__header">
+    <h2 class="scoreboard__title">Pipeline Status</h2>
+    <div class="scoreboard__meta">
+      <span class="scoreboard__score" id="scoreboard-score">loading…</span>
+      <span class="scoreboard__asof" id="scoreboard-asof">…</span>
+    </div>
+  </div>
+  <div class="scoreboard__gauges" id="scoreboard-gauges"></div>
+</section>
+
 <h1>What we're building right now</h1>
 <p class="lead" data-needs-tracker>Updates automatically to show <a id="epics-link">epics</a> with active tickets.</p>
 

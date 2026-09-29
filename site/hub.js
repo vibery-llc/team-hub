@@ -512,4 +512,81 @@
       }
     }
   }).observe(document.documentElement, { childList: true, subtree: true });
+
+  /* 7. Pipeline scoreboard.
+
+     At-a-glance status strip showing PASS/WAIT/FAIL gauges with evidence.
+     Enabled via hub.config.js pipelineScoreboard; hidden when disabled.
+     Reads snapshot.json (path configurable) and renders gauge tiles.
+
+     Status enum is strict: PASS | WAIT | FAIL only. Open PR ≠ PASS unless
+     a gauge rule explicitly says so. */
+  const scoreboardConfig = CONFIG.pipelineScoreboard || {};
+  if (scoreboardConfig.enabled && scoreboardConfig.snapshotPath) {
+    const section = document.getElementById("pipeline-scoreboard");
+    if (section) {
+      fetch(scoreboardConfig.snapshotPath, { cache: "no-cache" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data || !Array.isArray(data.gauges)) return;
+
+          // Render scoreline: "N pass · N wait · N fail"
+          const score = data.score || {};
+          const scoreline = [
+            score.PASS ? `${score.PASS} pass` : null,
+            score.WAIT ? `${score.WAIT} wait` : null,
+            score.FAIL ? `${score.FAIL} fail` : null,
+          ].filter(Boolean).join(" · ");
+
+          const scoreEl = document.getElementById("scoreboard-score");
+          if (scoreEl) scoreEl.textContent = scoreline || "no gauges";
+
+          const asofEl = document.getElementById("scoreboard-asof");
+          if (asofEl && data.as_of) asofEl.textContent = `as of ${data.as_of}`;
+
+          // Render gauges
+          const container = document.getElementById("scoreboard-gauges");
+          if (!container) return;
+
+          const gaugeHTML = data.gauges.map((g) => {
+            const status = String(g.status || "").toUpperCase();
+            const statusClass = status === "PASS" ? "pass" : status === "WAIT" ? "wait" : "fail";
+            
+            // Evidence: if it looks like a URL, link it; otherwise show as text
+            let evidenceHTML = esc(g.evidence || "");
+            if (/^https?:\/\//.test(g.evidence)) {
+              evidenceHTML = `<a href="${esc(g.evidence)}" target="_blank" rel="noopener noreferrer">${esc(g.evidence)}</a>`;
+            }
+
+            return `
+              <div class="gauge gauge--${statusClass}">
+                <div class="gauge__header">
+                  <div class="gauge__label">${esc(g.label || g.key || "")}</div>
+                  <div class="gauge__status">${esc(status)}</div>
+                </div>
+                <div class="gauge__evidence">${evidenceHTML}</div>
+                ${g.detail ? `<div class="gauge__detail">${esc(g.detail)}</div>` : ""}
+              </div>`;
+          }).join("");
+
+          container.innerHTML = gaugeHTML;
+          section.hidden = false;
+
+          // Apply custom brand colors if configured
+          if (scoreboardConfig.brandColor) {
+            section.style.setProperty("--accent", scoreboardConfig.brandColor);
+          }
+          if (scoreboardConfig.brandColorDim) {
+            section.style.setProperty("--accent-dim", scoreboardConfig.brandColorDim);
+          }
+
+          // Mark external links in the newly added content
+          markExternal(container);
+        })
+        .catch(() => {
+          /* snapshot.json not found or invalid — hide the section */
+          if (section) section.hidden = true;
+        });
+    }
+  }
 })();

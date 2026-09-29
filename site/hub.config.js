@@ -150,6 +150,22 @@ globalThis.HUB_CONFIG = {
     },
   },
 
+  /* Pipeline scoreboard — at-a-glance status gauges showing PASS/WAIT/FAIL
+     states with evidence. Enable this to show the scoreboard strip on the
+     dashboard, reading from the snapshot JSON file you maintain.
+
+     The board ID should match the "board" field in your snapshot.json.
+     Brand colors are optional; if omitted, the scoreboard uses the site's
+     accent color from CSS variables. */
+  pipelineScoreboard: {
+    enabled: false,
+    board: "",                          // e.g. "atlas-main-branch"
+    snapshotPath: "snapshot.json",      // relative to site/
+    /* Optional theming — omit to use site accent */
+    // brandColor: "#c2410c",
+    // brandColorDim: "rgba(194, 65, 12, 0.08)",
+  },
+
   /* Extra agent launchers, beyond the built-in Claude Code / Claude desktop /
      Claude in VS Code / Codex / Copy prompt. Use this for a tool specific to
      your stack rather than editing hub.js — an edit there is a merge conflict
