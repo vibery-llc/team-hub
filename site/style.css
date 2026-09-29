@@ -1396,119 +1396,107 @@ body::before {
 }
 .scoreboard[hidden] { display: none; }
 
-.scoreboard__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
-}
-
 .scoreboard__title {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.3px;
-  margin: 0;
+  font-size: clamp(20px, 4vw, 24px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px 0;
   color: var(--sb-fg, var(--text));
 }
 .scoreboard__title::before { display: none; }
 
 .scoreboard__meta {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 13px;
   color: var(--sb-muted, var(--text-dim));
+  margin: 0 0 12px 0;
+}
+
+.scoreboard__asof {
+  font-size: 13px;
 }
 
 .scoreboard__score {
+  font-size: 17px;
   font-weight: 600;
   letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 14px;
 }
+
+.sb-pass-count { color: var(--sb-pass, #1a7f37); }
+.sb-wait-count { color: var(--sb-wait, #9a6700); }
+.sb-fail-count { color: var(--sb-fail, #cf222e); }
 
 .scoreboard__gauges {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+  grid-template-columns: 1fr auto auto;
+  gap: 0;
+  font-size: 14px;
 }
 
 .gauge {
-  --gauge-color: var(--text-dim);
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--gauge-color);
-  border-radius: 8px;
-  padding: 12px 14px;
-  min-width: 0;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  display: contents;
 }
 
-.gauge:hover {
-  border-left-width: 4px;
-  border-left-color: var(--gauge-color);
-  box-shadow: 0 4px 12px -6px color-mix(in srgb, var(--gauge-color) 40%, transparent);
-}
-
-/* Shared chip colors (Charlie-approved solid pills) */
-.gauge--pass {
-  --gauge-color: var(--sb-pass, #1a7f37);
-}
-
-.gauge--wait {
-  --gauge-color: var(--sb-wait, #9a6700);
-}
-
-.gauge--fail {
-  --gauge-color: var(--sb-fail, #cf222e);
-}
-
-.gauge__header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
+.gauge__label,
+.gauge__status,
+.gauge__evidence {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--border);
 }
 
 .gauge__label {
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.3;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
   color: var(--sb-fg, var(--text));
 }
 
+/* Shared chip colors (Charlie-approved solid pills) */
 .gauge__status {
   font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  text-align: center;
+  white-space: nowrap;
   color: #ffffff;
-  background: var(--gauge-color);
-  border: 1px solid var(--sb-chip-border, var(--gauge-color));
-  border-radius: 4px;
-  padding: 2px 6px;
-  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 3px 10px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  line-height: 1.3;
+  align-self: center;
+}
+
+.gauge--pass .gauge__status {
+  background: var(--sb-pass, #1a7f37);
+  border: 1px solid color-mix(in srgb, var(--sb-pass, #1a7f37) 70%, #000);
+  border-bottom: 1px solid var(--border);
+}
+
+.gauge--wait .gauge__status {
+  background: var(--sb-wait, #9a6700);
+  border: 1px solid color-mix(in srgb, var(--sb-wait, #9a6700) 70%, #000);
+  border-bottom: 1px solid var(--border);
+}
+
+.gauge--fail .gauge__status {
+  background: var(--sb-fail, #cf222e);
+  border: 1px solid color-mix(in srgb, var(--sb-fail, #cf222e) 70%, #000);
+  border-bottom: 1px solid var(--border);
 }
 
 .gauge__evidence {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--sb-muted, var(--text-dim));
   line-height: 1.45;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 .gauge__evidence a {
-  color: var(--sb-accent, var(--gauge-color));
+  color: var(--sb-accent, var(--accent));
   text-decoration: none;
 }
 
@@ -1516,16 +1504,30 @@ body::before {
   text-decoration: underline;
 }
 
-.gauge__detail {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--sb-muted, var(--text-dim));
-  margin-top: 4px;
-}
-
 @media (max-width: 760px) {
   .scoreboard__gauges {
     grid-template-columns: 1fr;
+  }
+  
+  .gauge__label,
+  .gauge__status,
+  .gauge__evidence {
+    border-bottom: none;
+  }
+  
+  .gauge {
+    display: block;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .gauge__status {
+    margin: 6px 0;
+    display: inline-block;
+  }
+  
+  .gauge__evidence {
+    margin-top: 4px;
   }
 }
 

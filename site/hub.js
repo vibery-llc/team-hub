@@ -541,6 +541,48 @@
             : Promise.resolve(null);
 
           return themePromise.then((theme) => {
+            // Helper: extract short label from evidence (last segment or #PR)
+            const shortEvidence = (evidence) => {
+              if (!evidence) return "";
+              if (Array.isArray(evidence)) {
+                const first = evidence[0];
+                const short = shortEvidence(first);
+                return evidence.length > 1 ? `${short} +${evidence.length - 1} more` : short;
+              }
+              
+              // URL: extract meaningful part
+              if (/^https?:\/\//.test(evidence)) {
+                try {
+                  const url = new URL(evidence);
+                  const path = url.pathname;
+                  // GitHub PR/issue: #123
+                  const prMatch = path.match(/\/pull\/(\d+)|\/issues\/(\d+)/);
+                  if (prMatch) return `#${prMatch[1] || prMatch[2]}`;
+                  // Actions run: runs/123
+                  const runMatch = path.match(/\/runs\/(\d+)/);
+                  if (runMatch) return `runs/${runMatch[1]}`;
+                  // Last segment
+                  const segments = path.split('/').filter(Boolean);
+                  if (segments.length > 0) return decodeURIComponent(segments[segments.length - 1]);
+                  return url.host;
+                } catch (e) {
+                  return evidence.substring(0, 32) + "…";
+                }
+              }
+              
+              // Path: basename + parent folder
+              if (evidence.startsWith('/')) {
+                const segments = evidence.split('/').filter(Boolean);
+                if (segments.length > 1) {
+                  return `${segments[segments.length - 2]}/${segments[segments.length - 1]}`;
+                }
+                return segments[segments.length - 1] || evidence;
+              }
+              
+              // Short text as-is
+              return evidence.length > 48 ? evidence.substring(0, 45) + "…" : evidence;
+            };
+
             // Apply theme CSS custom properties
             if (theme && theme.brand) {
               const b = theme.brand;
@@ -566,15 +608,15 @@
               const pass = score.pass || score.PASS || 0;
               const wait = score.wait || score.WAIT || 0;
               const fail = score.fail || score.FAIL || 0;
-              scoreline = [
-                pass ? `${pass} pass` : null,
-                wait ? `${wait} wait` : null,
-                fail ? `${fail} fail` : null,
-              ].filter(Boolean).join(" · ") || "no gauges";
+              const parts = [];
+              if (pass > 0) parts.push(`<span class="sb-pass-count">${pass} pass</span>`);
+              if (wait > 0) parts.push(`<span class="sb-wait-count">${wait} wait</span>`);
+              if (fail > 0) parts.push(`<span class="sb-fail-count">${fail} fail</span>`);
+              scoreline = parts.length > 0 ? parts.join(" · ") : "no gauges";
             }
 
             const scoreEl = document.getElementById("scoreboard-score");
-            if (scoreEl) scoreEl.textContent = scoreline;
+            if (scoreEl) scoreEl.innerHTML = scoreline;
 
             const asofEl = document.getElementById("scoreboard-asof");
             if (asofEl && data.as_of) asofEl.textContent = `as of ${data.as_of}`;
@@ -585,7 +627,7 @@
               titleEl.textContent = (theme && theme.title) || data.title || "Pipeline Status";
             }
 
-            // Render gauges (array form)
+            // Render gauges (array form) as table
             const container = document.getElementById("scoreboard-gauges");
             if (!container) return;
 
@@ -593,29 +635,29 @@
               const status = String(g.status || "").toUpperCase();
               const statusClass = status === "PASS" ? "pass" : status === "WAIT" ? "wait" : "fail";
               
-              // Evidence: array, URL, or plain text
+              // Evidence: short label with full URL in href
               let evidenceHTML = "";
-              if (Array.isArray(g.evidence)) {
-                evidenceHTML = g.evidence.map(e => {
-                  if (/^https?:\/\//.test(e)) {
-                    return `<a href="${esc(e)}">${esc(e)}</a>`;
-                  }
-                  return esc(e);
-                }).join("<br>");
-              } else if (/^https?:\/\//.test(g.evidence)) {
-                evidenceHTML = `<a href="${esc(g.evidence)}">${esc(g.evidence)}</a>`;
+              const rawEvidence = g.evidence || "";
+              const shortLabel = shortEvidence(rawEvidence);
+              
+              if (Array.isArray(rawEvidence)) {
+                const first = rawEvidence[0];
+                if (/^https?:\/\//.test(first)) {
+                  evidenceHTML = `<a href="${esc(first)}">${esc(shortLabel)}</a>`;
+                } else {
+                  evidenceHTML = esc(shortLabel);
+                }
+              } else if (/^https?:\/\//.test(rawEvidence)) {
+                evidenceHTML = `<a href="${esc(rawEvidence)}">${esc(shortLabel)}</a>`;
               } else {
-                evidenceHTML = esc(g.evidence || "");
+                evidenceHTML = esc(shortLabel);
               }
 
               return `
                 <div class="gauge gauge--${statusClass}">
-                  <div class="gauge__header">
-                    <div class="gauge__label">${esc(g.label || g.key || "")}</div>
-                    <div class="gauge__status">${esc(status)}</div>
-                  </div>
+                  <div class="gauge__label">${esc(g.label || g.key || "")}</div>
+                  <div class="gauge__status">${esc(status)}</div>
                   <div class="gauge__evidence">${evidenceHTML}</div>
-                  ${g.detail ? `<div class="gauge__detail">${esc(g.detail)}</div>` : ""}
                 </div>`;
             }).join("");
 
