@@ -517,10 +517,12 @@
 
      At-a-glance status strip showing PASS/WAIT/FAIL gauges with evidence.
      Enabled via hub.config.js pipelineScoreboard; hidden when disabled.
-     Reads snapshot.json (path configurable) and renders gauge tiles.
+     Reads snapshot.json (canonical array schema) and renders gauge tiles.
+     Loads theme pack by board ID to apply brand tokens.
 
-     Status enum is strict: PASS | WAIT | FAIL only. Open PR ≠ PASS unless
-     a gauge rule explicitly says so. */
+     Status enum: PASS | WAIT | FAIL. Open PR ≠ PASS unless gauge rule says so.
+     Canonical schema: docs/pipeline-scoreboard-schema.md
+     Shared chip colors: PASS #1a7f37, WAIT #9a6700, FAIL #cf222e */
   const scoreboardConfig = CONFIG.pipelineScoreboard || {};
   if (scoreboardConfig.enabled && scoreboardConfig.snapshotPath) {
     const section = document.getElementById("pipeline-scoreboard");
@@ -530,58 +532,107 @@
         .then((data) => {
           if (!data || !Array.isArray(data.gauges)) return;
 
-          // Render scoreline: "N pass · N wait · N fail"
-          const score = data.score || {};
-          const scoreline = [
-            score.PASS ? `${score.PASS} pass` : null,
-            score.WAIT ? `${score.WAIT} wait` : null,
-            score.FAIL ? `${score.FAIL} fail` : null,
-          ].filter(Boolean).join(" · ");
+          // Load theme pack by board ID
+          const boardId = data.board || "";
+          const themePromise = boardId
+            ? fetch(`themes/${boardId}.json`, { cache: "no-cache" })
+                .then((r) => (r.ok ? r.json() : null))
+                .catch(() => null)
+            : Promise.resolve(null);
 
-          const scoreEl = document.getElementById("scoreboard-score");
-          if (scoreEl) scoreEl.textContent = scoreline || "no gauges";
-
-          const asofEl = document.getElementById("scoreboard-asof");
-          if (asofEl && data.as_of) asofEl.textContent = `as of ${data.as_of}`;
-
-          // Render gauges
-          const container = document.getElementById("scoreboard-gauges");
-          if (!container) return;
-
-          const gaugeHTML = data.gauges.map((g) => {
-            const status = String(g.status || "").toUpperCase();
-            const statusClass = status === "PASS" ? "pass" : status === "WAIT" ? "wait" : "fail";
-            
-            // Evidence: if it looks like a URL, link it; otherwise show as text
-            let evidenceHTML = esc(g.evidence || "");
-            if (/^https?:\/\//.test(g.evidence)) {
-              evidenceHTML = `<a href="${esc(g.evidence)}" target="_blank" rel="noopener noreferrer">${esc(g.evidence)}</a>`;
+          return themePromise.then((theme) => {
+            // Apply theme CSS custom properties
+            if (theme && theme.brand) {
+              const b = theme.brand;
+              if (b.bg) section.style.setProperty("--sb-bg", b.bg);
+              if (b.surface) section.style.setProperty("--sb-surface", b.surface);
+              if (b.fg) section.style.setProperty("--sb-fg", b.fg);
+              if (b.muted) section.style.setProperty("--sb-muted", b.muted);
+              if (b.primary) section.style.setProperty("--sb-primary", b.primary);
+              if (b.accent) section.style.setProperty("--sb-accent", b.accent || b.primary);
+              if (b.pass) section.style.setProperty("--sb-pass", b.pass);
+              if (b.wait) section.style.setProperty("--sb-wait", b.wait);
+              if (b.fail) section.style.setProperty("--sb-fail", b.fail);
+              if (b.chipBorder) section.style.setProperty("--sb-chip-border", b.chipBorder);
             }
 
-            return `
-              <div class="gauge gauge--${statusClass}">
-                <div class="gauge__header">
-                  <div class="gauge__label">${esc(g.label || g.key || "")}</div>
-                  <div class="gauge__status">${esc(status)}</div>
-                </div>
-                <div class="gauge__evidence">${evidenceHTML}</div>
-                ${g.detail ? `<div class="gauge__detail">${esc(g.detail)}</div>` : ""}
-              </div>`;
-          }).join("");
+            // Render scoreline from score (object or string)
+            // Accept both lowercase (canonical: pass/wait/fail) and uppercase (PASS/WAIT/FAIL)
+            let scoreline = "";
+            if (typeof data.score === "string") {
+              scoreline = data.score;
+            } else {
+              const score = data.score || {};
+              const pass = score.pass || score.PASS || 0;
+              const wait = score.wait || score.WAIT || 0;
+              const fail = score.fail || score.FAIL || 0;
+              scoreline = [
+                pass ? `${pass} pass` : null,
+                wait ? `${wait} wait` : null,
+                fail ? `${fail} fail` : null,
+              ].filter(Boolean).join(" · ") || "no gauges";
+            }
 
-          container.innerHTML = gaugeHTML;
-          section.hidden = false;
+            const scoreEl = document.getElementById("scoreboard-score");
+            if (scoreEl) scoreEl.textContent = scoreline;
 
-          // Apply custom brand colors if configured
-          if (scoreboardConfig.brandColor) {
-            section.style.setProperty("--accent", scoreboardConfig.brandColor);
-          }
-          if (scoreboardConfig.brandColorDim) {
-            section.style.setProperty("--accent-dim", scoreboardConfig.brandColorDim);
-          }
+            const asofEl = document.getElementById("scoreboard-asof");
+            if (asofEl && data.as_of) asofEl.textContent = `as of ${data.as_of}`;
 
-          // Mark external links in the newly added content
-          markExternal(container);
+            // Update title (use theme.title or snapshot.title, fall back to "Pipeline Status")
+            const titleEl = section.querySelector(".scoreboard__title");
+            if (titleEl) {
+              titleEl.textContent = (theme && theme.title) || data.title || "Pipeline Status";
+            }
+
+            // Render gauges (array form)
+            const container = document.getElementById("scoreboard-gauges");
+            if (!container) return;
+
+            const gaugeHTML = data.gauges.map((g) => {
+              const status = String(g.status || "").toUpperCase();
+              const statusClass = status === "PASS" ? "pass" : status === "WAIT" ? "wait" : "fail";
+              
+              // Evidence: array, URL, or plain text
+              let evidenceHTML = "";
+              if (Array.isArray(g.evidence)) {
+                evidenceHTML = g.evidence.map(e => {
+                  if (/^https?:\/\//.test(e)) {
+                    return `<a href="${esc(e)}">${esc(e)}</a>`;
+                  }
+                  return esc(e);
+                }).join("<br>");
+              } else if (/^https?:\/\//.test(g.evidence)) {
+                evidenceHTML = `<a href="${esc(g.evidence)}">${esc(g.evidence)}</a>`;
+              } else {
+                evidenceHTML = esc(g.evidence || "");
+              }
+
+              return `
+                <div class="gauge gauge--${statusClass}">
+                  <div class="gauge__header">
+                    <div class="gauge__label">${esc(g.label || g.key || "")}</div>
+                    <div class="gauge__status">${esc(status)}</div>
+                  </div>
+                  <div class="gauge__evidence">${evidenceHTML}</div>
+                  ${g.detail ? `<div class="gauge__detail">${esc(g.detail)}</div>` : ""}
+                </div>`;
+            }).join("");
+
+            container.innerHTML = gaugeHTML;
+            section.hidden = false;
+
+            // Legacy: Apply custom brand colors from config if present (deprecated in favor of theme packs)
+            if (scoreboardConfig.brandColor) {
+              section.style.setProperty("--sb-accent", scoreboardConfig.brandColor);
+            }
+            if (scoreboardConfig.brandColorDim) {
+              section.style.setProperty("--sb-chip-border", scoreboardConfig.brandColorDim);
+            }
+
+            // Mark external links in the newly added content
+            markExternal(container);
+          });
         })
         .catch(() => {
           /* snapshot.json not found or invalid — hide the section */

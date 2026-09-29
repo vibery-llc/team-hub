@@ -1,6 +1,8 @@
 # Exporting Pipeline Scoreboard Snapshots
 
-The pipeline scoreboard snapshot can be exported to standalone HTML and PNG formats for sharing, archiving, or use in skills and automation.
+The pipeline scoreboard snapshot can be exported to standalone HTML, PNG, and PDF formats for sharing, archiving, or use in skills and automation.
+
+**Canonical export script**: `scripts/snapshot-to-png.mjs` (adapted from `scoreboard-pilots/2026-09-29/render-png.mjs`). Hub UI and skill export share the same HTML→bytes path so live board and exports match.
 
 ## Export to HTML
 
@@ -81,59 +83,112 @@ For production use, consider a Node.js script that:
 3. Inlines critical CSS
 4. Outputs standalone HTML
 
+## Theme compatibility
+
+The export script loads theme packs from `site/themes/<board-id>.json` to apply brand tokens. When exporting:
+
+1. Snapshot `board` field determines which theme loads
+2. Theme `brand.*` properties map to CSS custom properties (`--sb-*`)
+3. Shared chip colors: PASS `#1a7f37`, WAIT `#9a6700`, FAIL `#cf222e`
+4. Missing logos fall back to text title + `brand.primary`
+
+Theme packs are optional. Without a theme, the scoreboard uses hub defaults.
+
+**Known logo gaps** (do not block export):
+- CoS: `logo: null` — text title used
+- Vibery: PNG pending #1512 — use text title until landed
+- Compass: PNG TBD — use text title until confirmed
+
 ## Export to PNG
 
 PNG export requires rendering the HTML to an image. Two common approaches:
 
 ### Using Puppeteer (Node.js)
 
+**Canonical implementation**: `scripts/snapshot-to-png.mjs` (source: `scoreboard-pilots/2026-09-29/render-png.mjs`)
+
 ```javascript
 // scripts/snapshot-to-png.js
+// Adapted from scoreboard-pilots/render-png.mjs pilot implementation
 const puppeteer = require('puppeteer');
 const fs = require('fs');
+const path = require('path');
 
-async function exportSnapshotToPNG(snapshotPath, outputPath) {
+async function exportSnapshotToPNG(snapshotPath, outputPath, options = {}) {
   const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
   
-  const browser = await puppeteer.launch();
+  const browser = await puppeteer.launch({ headless: true });
   const page = await browser.newPage();
   
-  // Set viewport for consistent sizing
-  await page.setViewport({ width: 1200, height: 800 });
-  
-  // Load the HTML (either live URL or generated file)
-  await page.goto('file://' + process.cwd() + '/scoreboard.html', {
-    waitUntil: 'networkidle0'
+  // Set viewport for consistent sizing (adjust per your needs)
+  await page.setViewport({ 
+    width: options.width || 1200, 
+    height: options.height || 800,
+    deviceScaleFactor: 2  // 2x for Retina/high-DPI
   });
   
+  // Option 1: Load live hub URL (requires running server)
+  // await page.goto('http://localhost:8080/', { waitUntil: 'networkidle0' });
+  
+  // Option 2: Load generated standalone HTML file
+  const htmlPath = 'file://' + path.resolve(options.htmlPath || 'scoreboard.html');
+  await page.goto(htmlPath, { waitUntil: 'networkidle0' });
+  
   // Wait for scoreboard to render
-  await page.waitForSelector('#pipeline-scoreboard');
+  await page.waitForSelector('#pipeline-scoreboard:not([hidden])');
   
   // Take screenshot of just the scoreboard section
   const element = await page.$('#pipeline-scoreboard');
+  if (!element) {
+    throw new Error('Scoreboard element not found - check that it rendered');
+  }
+  
   await element.screenshot({
     path: outputPath,
     omitBackground: false
   });
   
   await browser.close();
-  console.log(`Exported to ${outputPath}`);
+  console.log(`✓ Exported to ${outputPath}`);
+  
+  return {
+    board: snapshot.board,
+    asOf: snapshot.as_of,
+    score: snapshot.score,
+    outputPath
+  };
 }
 
-// Usage
-const [snapshotPath, outputPath] = process.argv.slice(2);
-exportSnapshotToPNG(
-  snapshotPath || 'site/snapshot.json',
-  outputPath || 'scoreboard.png'
-);
+// CLI usage
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const [snapshotPath, outputPath] = process.argv.slice(2);
+  exportSnapshotToPNG(
+    snapshotPath || 'site/snapshot.json',
+    outputPath || 'scoreboard.png'
+  ).catch(err => {
+    console.error('Export failed:', err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { exportSnapshotToPNG };
 ```
 
 Install and run:
 
 ```bash
-npm install puppeteer
-node scripts/snapshot-to-png.js site/snapshot.json output.png
+npm install puppeteer-core
+node scripts/snapshot-to-png.mjs site/snapshot.json output.png
 ```
+
+**PDF export**: Use the same script with `--pdf` flag:
+
+```bash
+node scripts/snapshot-to-png.mjs site/snapshot.json --pdf
+# Generates both scoreboard.png and scoreboard.pdf
+```
+
+PDF uses the same Chromium session with `page.pdf({ printBackground: true, preferCSSPageSize: true })`. The `@media print` styles in `style.css` preserve chip colors and layout.
 
 ### Using CLI tools
 

@@ -1,164 +1,97 @@
-# Pipeline Scoreboard Schema
+# Pipeline scoreboard — canonical snapshot schema
 
-The pipeline scoreboard provides an at-a-glance status view of project gauges, showing PASS/WAIT/FAIL states with evidence and as-of timestamps.
+**Locked 2026-09-29 (Charlie).** Hub live strip and skill PNG/PDF export read the **same** `snapshot.json` bytes.
 
-## Schema version
+Status enum: `PASS` | `WAIT` | `FAIL`
 
-Array form (canonical): `snapshot.json` contains an array of gauge objects.
+## Required fields
 
-## Status enum
+| Field | Type | Notes |
+|---|---|---|
+| `board` | string | Stable board id (`btf-pipeline`, `vibery-session-zero`, …) |
+| `title` | string | Human title for HTML/PNG/PDF header |
+| `as_of` | string | ISO-8601 or local PT (`2026-09-29 11:22 PDT`) |
+| `score` | object **or** string | Prefer `{ "pass", "wait", "fail" }` (lowercase keys, ints). Scoreline string (`"4 pass · 2 wait · 0 fail"`) also OK. |
+| `gauges` | **array** | Ordered list of `{ key, label, status, evidence }`. **Not** a key→status map. |
 
-Only three values allowed:
-- `PASS` — requirement met
-- `WAIT` — pending or in progress
-- `FAIL` — blocked or failing
+### Gauge object
 
-**Important**: Open PR ≠ PASS unless a gauge rule explicitly says so.
+| Field | Type | Notes |
+|---|---|---|
+| `key` | string | Stable snake_case id |
+| `label` | string | Display label |
+| `status` | string | `PASS` \| `WAIT` \| `FAIL` |
+| `evidence` | string \| string[] | Link, path, or short proof |
 
-## Snapshot structure
+## Optional fields
 
+| Field | Type | Notes |
+|---|---|---|
+| `open_work` | array | `{ id, class?, title, state?, next? }` — PRs, tasks, or both |
+| `drift` | object \| array \| string | Branches vs base, roster holes, calendar collisions |
+| `top_moves` | array | Strings **or** `{ move, owner }` — 3–5 ordered next actions |
+| `changed_since_prior` | array | `{ key, from, to, label? }` gauge flips |
+| `prior_as_of` | string | Prior snapshot timestamp |
+| `material_change` | boolean | Hint for quiet-if-unchanged |
+
+Board-specific extras (`repos`, `tips`, `main`, `branches`, `data_gaps`, …) are allowed **alongside** the canonical fields. Do not replace `gauges` array with a map.
+
+## Map → array migration (BTF desk)
+
+**Wrong (legacy desk / hub stub):**
 ```json
-{
-  "board": "project-board-id",
-  "as_of": "2026-09-29 11:22 PDT",
-  "repos": {
-    "main_repo": "org/repo-name"
-  },
-  "tips": {
-    "main": "abc123def4",
-    "staging": "def456ghi7",
-    "staging_ahead_of_main": 42
-  },
-  "gauges": [
-    {
-      "key": "unique_gauge_key",
-      "label": "Human-readable gauge name",
-      "status": "PASS | WAIT | FAIL",
-      "evidence": "https://github.com/org/repo/pull/123",
-      "detail": "Optional context or reason"
-    }
-  ],
-  "score": {
-    "PASS": 4,
-    "WAIT": 2,
-    "FAIL": 1
-  },
-  "open_prs": [
-    {
-      "number": 123,
-      "title": "PR title",
-      "isDraft": false,
-      "url": "https://github.com/org/repo/pull/123"
-    }
-  ],
-  "top_moves": [
-    "Owner: action description with next step.",
-    "Owner: another concrete action."
-  ],
-  "data_gaps": [
-    "Description of any missing or unverified data"
-  ]
-}
+"gauges": { "freeze": "PASS", "reachcon": "FAIL" }
 ```
 
-## Field descriptions
-
-### Required fields
-
-- **`board`** (string): Project board identifier. Scoped to this project; determines theming.
-- **`as_of`** (string): Timestamp when snapshot was generated, in local time with timezone.
-- **`gauges`** (array): Array of gauge objects. Each gauge must have:
-  - **`key`** (string): Stable unique identifier for this gauge (project-local, lowercase with underscores).
-  - **`label`** (string): Human-readable gauge name displayed in UI.
-  - **`status`** (string): One of `PASS`, `WAIT`, or `FAIL`.
-  - **`evidence`** (string): URL, file path, or short proof text showing why this status was assigned.
-- **`score`** (object): Count of gauges in each status (`PASS`, `WAIT`, `FAIL`). Must sum to total gauges.
-
-### Optional fields
-
-- **`repos`** (object): Repository references relevant to this board.
-- **`tips`** (object): Git tip information (SHAs, branch comparisons).
-- **`releases`** (object): Release/version tracking.
-- **`detail`** (string, on gauge): Additional context for the gauge status.
-- **`source`** (string, on gauge): Where this gauge status was confirmed (e.g., "desk-confirmed").
-- **`open_prs`** (array): List of relevant pull requests.
-- **`top_moves`** (array): Ordered next actions (3-5 recommended).
-- **`data_gaps`** (array): Known limitations or unverified data in this snapshot.
-- **`changed_since_prior`** (array): Gauges that changed status since last snapshot.
-- **`prior_as_of`** (string): Timestamp of previous snapshot for comparison.
-
-## Theming
-
-Project theming is configured in `hub.config.js`:
-
-```javascript
-pipelineScoreboard: {
-  enabled: true,
-  board: "project-board-id",         // matches snapshot.json "board"
-  snapshotPath: "snapshot.json",     // relative to site/
-  brandColor: "#c2410c",             // gauge accent color (optional)
-  brandColorDim: "rgba(194, 65, 12, 0.08)", // gauge background (optional)
-}
-```
-
-If omitted, scoreboard uses site accent color from CSS variables.
-
-## Example snapshots
-
-See `site/snapshot.json` for a working example with typical gauge patterns.
-
-## Export formats
-
-The snapshot can be exported to shareable formats:
-
-### HTML export
-
-A standalone HTML file with embedded styles, suitable for:
-- Email distribution
-- Archive/record keeping
-- Offline viewing
-
-### PNG export
-
-For skills and automation, export HTML then capture to PNG:
-
-```bash
-# Using puppeteer or similar
-node scripts/snapshot-to-png.js snapshot.json output.png
-```
-
-See `scripts/export-snapshot.md` for export tooling documentation.
-
-## Usage rules
-
-1. Status must reflect current state, not aspirational goals
-2. Open PR ≠ PASS unless gauge rules explicitly allow it
-3. Evidence must be specific (URLs, paths, commit SHAs) not vague
-4. Update `as_of` timestamp on every snapshot refresh
-5. Keep gauge keys stable across snapshots for diff tracking
-6. `top_moves` should be concrete actions with clear owners
-
-## Migration from BTF map form
-
-Legacy BTF format used an object map for gauges:
-
-```json
-"gauges": {
-  "gauge_key": "PASS"
-}
-```
-
-Migrate to array form for richer metadata:
-
+**Right (canonical):**
 ```json
 "gauges": [
-  {
-    "key": "gauge_key",
-    "label": "Gauge Label",
-    "status": "PASS",
-    "evidence": "..."
-  }
+  { "key": "freeze", "label": "Freeze gates on main", "status": "PASS", "evidence": "…" },
+  { "key": "reachcon", "label": "ReachCon rename (BF-249)", "status": "FAIL", "evidence": "…" }
 ]
 ```
 
-Array form is canonical; map form may be deprecated in future versions.
+Migrated BTF example: `btf-migrated.snapshot.json` (originals under `/workspace/kf-desk-proof/pipeline-scoreboard/` and hub stub left untouched).
+
+## Theme pack (shared HTML → PNG/PDF)
+
+```json
+{
+  "board": "btf-pipeline",
+  "title": "BTF Pipeline Scoreboard",
+  "brand": {
+    "primary": "#1f2328",
+    "pass": "#1a7f37",
+    "wait": "#9a6700",
+    "fail": "#cf222e",
+    "surface": "#ffffff",
+    "bg": "#f6f8fa",
+    "logo": null
+  },
+  "gauge_set": ["freeze", "justin_inv", "nick_inv", "toolswing", "reachcon", "beautiful_corner", "axe_gym"]
+}
+```
+
+Hub UI and skill export must render from the same snapshot + theme; PNG/PDF are screenshots/prints of that HTML so bytes match the live board.
+
+## Delivery
+
+1. Write `snapshot.json` (canonical schema).
+2. Render `index.html` from snapshot (+ theme).
+3. PNG via Puppeteer screenshot — see `render-png.mjs` (source also at `/workspace/scoreboard-pilots/2026-09-29/render-png.mjs`).
+4. PDF via same Chromium session: `page.pdf({ path, printBackground: true, preferCSSPageSize: true })` (no separate pipeline yet; add beside PNG in the render script when Design wires print CSS).
+5. Quiet if gauges + material open_work unchanged since prior (`material_change: false` or empty `changed_since_prior`).
+
+## Consumers
+
+| Consumer | Path / note |
+|---|---|
+| Skill | `/home/box/agent-data/workflows/pipeline-scoreboard/SKILL.md` |
+| Pilots (array ✓) | `/workspace/scoreboard-pilots/2026-09-29/{vibery-session-zero,compass-sunday-ops,cos-hanging-thread}/` |
+| BTF desk (map — migrate) | `/workspace/kf-desk-proof/pipeline-scoreboard/snapshot.json` |
+| Hub stub (map — KF Desk PR) | `/workspace/kf-hub-scoreboard-pr/site/btf-pipeline-scoreboard/` |
+
+## Score key casing
+
+Canonical: lowercase `pass` / `wait` / `fail`.  
+Pilots and BTF desk currently emit uppercase `PASS` / `WAIT` / `FAIL`. Readers should accept both during converge; new writes use lowercase.

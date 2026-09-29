@@ -1,76 +1,160 @@
 {
-  "board": "example-project",
-  "as_of": "2026-09-29 14:30 PDT",
-  "repos": {
-    "main": "northwind-labs/atlas"
-  },
-  "tips": {
-    "main": "abc123def4",
-    "staging": "def456ghi7",
-    "staging_ahead_of_main": 12
+  "board": "btf-pipeline",
+  "title": "BTF Pipeline Scoreboard",
+  "as_of": "2026-09-29 09:01 PDT",
+  "score": {
+    "pass": 5,
+    "wait": 2,
+    "fail": 0
   },
   "gauges": [
     {
-      "key": "ci_green",
-      "label": "CI passing on main",
+      "key": "freeze",
+      "label": "Freeze gates on main",
       "status": "PASS",
-      "evidence": "https://github.com/northwind-labs/atlas/actions/runs/123456"
+      "evidence": "https://github.com/Kingdom-Forge/before-the-flood/blob/main/docs/agent-harness/scene-freeze.md"
     },
     {
-      "key": "docs_current",
-      "label": "AGENTS.md up to date",
+      "key": "justin_inv",
+      "label": "Justin design inventory (BF-248)",
       "status": "PASS",
-      "evidence": "docs/AGENTS.md reviewed, last updated 2026-09-28"
+      "evidence": "https://github.com/Kingdom-Forge/before-the-flood/blob/justin/three-minutes-wide-2026-09-28/JTStaging/decisions/SCENE_SPLIT_INVENTORY.md"
     },
     {
-      "key": "release_candidate",
-      "label": "v0.2.0 release candidate",
+      "key": "nick_inv",
+      "label": "Nick POI inventory (BF-248)",
+      "status": "PASS",
+      "evidence": "https://github.com/Kingdom-Forge/before-the-flood/blob/POI-Workstation/docs/design/poi/SCENE_SPLIT_INVENTORY.md"
+    },
+    {
+      "key": "toolswing",
+      "label": "ToolSwing decision on #164",
+      "status": "PASS",
+      "evidence": "https://github.com/Kingdom-Forge/before-the-flood/pull/164"
+    },
+    {
+      "key": "reachcon",
+      "label": "ReachCon rename (BF-249)",
+      "status": "PASS",
+      "evidence": "https://github.com/Kingdom-Forge/before-the-flood/blob/main/Assets/Scenes/ReachCon.unity"
+    },
+    {
+      "key": "beautiful_corner",
+      "label": "Beautiful Corner \u2192 tiles (BF-222)",
       "status": "WAIT",
-      "evidence": "https://github.com/northwind-labs/atlas/pull/42",
-      "detail": "Awaiting QA sign-off"
+      "evidence": "https://github.com/Kingdom-Forge/before-the-flood/blob/main/Assets/Scenes/BeautifulCorner.unity"
     },
     {
-      "key": "integration_tests",
-      "label": "Integration test coverage",
+      "key": "axe_gym",
+      "label": "Axe chop gym worked example",
       "status": "WAIT",
-      "evidence": "ATL-15 in progress",
-      "detail": "3 of 5 critical paths covered"
-    },
-    {
-      "key": "perf_baseline",
-      "label": "Performance baseline (ATL-18)",
-      "status": "FAIL",
-      "evidence": "https://github.com/northwind-labs/atlas/issues/18",
-      "detail": "Load tests timing out on staging"
+      "evidence": "https://github.com/Kingdom-Forge/before-the-flood/blob/main/Assets/Justin%20Testing/Scenes/JT_TreeCutting.unity"
     }
   ],
-  "score": {
-    "PASS": 2,
-    "WAIT": 2,
-    "FAIL": 1
+  "open_work": [
+    {
+      "id": "#168",
+      "title": "BF-249: finish the ReachCon rename",
+      "state": "ready",
+      "next": null,
+      "class": null,
+      "url": "https://github.com/Kingdom-Forge/before-the-flood/pull/168",
+      "author": "ChuckMayo",
+      "head": "fix/reachcon-rename-paths",
+      "base": "main"
+    },
+    {
+      "id": "#167",
+      "title": "Restore captureDeltaTime in teardown in three PlayMode fixtures (btf-yhr)",
+      "state": "ready",
+      "next": null,
+      "class": null,
+      "url": "https://github.com/Kingdom-Forge/before-the-flood/pull/167",
+      "author": "ChuckMayo",
+      "head": "fix/btf-yhr-capture-delta-teardown",
+      "base": "main"
+    },
+    {
+      "id": "#166",
+      "title": "ChopSwingEvidence: restore captureDeltaTime in teardown (btf-2vm)",
+      "state": "ready",
+      "next": null,
+      "class": null,
+      "url": "https://github.com/Kingdom-Forge/before-the-flood/pull/166",
+      "author": "ChuckMayo",
+      "head": "fix/btf-2vm-capture-delta-leak",
+      "base": "main"
+    },
+    {
+      "id": "#164",
+      "title": "Sync the design branch with world/three-minutes-wide: compiles 0/0 (ToolSwing both sides, asmdefs parked)",
+      "state": "ready",
+      "next": null,
+      "class": null,
+      "url": "https://github.com/Kingdom-Forge/before-the-flood/pull/164",
+      "author": "jchingames",
+      "head": "justin/sync-world-2026-09-28",
+      "base": "world/three-minutes-wide"
+    },
+    {
+      "id": "#162",
+      "title": "graduate-next: skill + preflight gate for the graduation queue",
+      "state": "draft",
+      "next": null,
+      "class": null,
+      "url": "https://github.com/Kingdom-Forge/before-the-flood/pull/162",
+      "author": "ChuckMayo",
+      "head": "harness/graduate-next",
+      "base": "main"
+    }
+  ],
+  "drift": {
+    "branches": [
+      {
+        "branch": "world/three-minutes-wide",
+        "status": "diverged",
+        "ahead": 178,
+        "behind": 17
+      },
+      {
+        "branch": "POI-Workstation",
+        "status": "diverged",
+        "ahead": 61,
+        "behind": 3
+      },
+      {
+        "branch": "justin/sync-world-2026-09-28",
+        "status": "diverged",
+        "ahead": 294,
+        "behind": 3
+      },
+      {
+        "branch": "justin/three-minutes-wide-2026-09-28",
+        "status": "diverged",
+        "ahead": 285,
+        "behind": 3
+      }
+    ]
   },
-  "open_prs": [
+  "top_moves": [
+    "Land #168 (BF-249 path cleanup) \u2014 shipping file is ReachCon; freeze doc and skill paths still say Act1Slice in places.",
+    "Eric Beautiful Corner push + video \u2014 still blocks BF-222 tiles path; Hub share has no Eric BC proof after the weekly.",
+    "Name the axe gym \u2014 JT_TreeCutting is a lab scene, not the graduated worked example after inventories.",
+    "Review or rebase #164 \u2014 ToolSwing tip matches main; design branches are 3 behind after the ReachCon merge."
+  ],
+  "changed_since_prior": [
     {
-      "number": 42,
-      "title": "release: v0.2.0 candidate with integrated auth",
-      "isDraft": true,
-      "url": "https://github.com/northwind-labs/atlas/pull/42"
-    },
-    {
-      "number": 38,
-      "title": "feat: add session persistence layer",
-      "isDraft": false,
-      "url": "https://github.com/northwind-labs/atlas/pull/38"
+      "key": "reachcon",
+      "from": "FAIL",
+      "to": "PASS",
+      "label": "ReachCon rename (BF-249)"
     }
   ],
-  "top_moves": [
-    "QA: review v0.2.0 candidate (PR #42) and sign off or file blockers.",
-    "Eng: finish integration test coverage for auth flow (ATL-15).",
-    "Eng: diagnose staging load test timeouts (ATL-18).",
-    "Product: decide whether v0.2.0 ships with partial integration tests or waits."
-  ],
-  "data_gaps": [
-    "Staging load test results not re-verified in last 24h",
-    "QA feedback on PR #42 not yet captured in snapshot"
-  ]
+  "prior_as_of": "2026-09-29 00:54 PDT",
+  "material_change": true,
+  "main": {
+    "sha": "b3f3e04c86",
+    "msg": "Merge pull request #165 from Kingdom-Forge/cursor/rename-act1slice-to-reachcon-fac2",
+    "date": "2026-09-29T15:01:42Z"
+  }
 }

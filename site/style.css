@@ -1377,9 +1377,18 @@ body::before {
 
 /* ---- pipeline scoreboard ------------------------------------------------- */
 /* At-a-glance status strip showing PASS/WAIT/FAIL gauges with evidence.
-   Enabled via hub.config.js pipelineScoreboard. */
+   Enabled via hub.config.js pipelineScoreboard.
+   
+   Theme variables (applied by hub.js when theme JSON loads):
+   --sb-bg, --sb-surface, --sb-fg, --sb-muted, --sb-primary, --sb-accent,
+   --sb-pass, --sb-wait, --sb-fail, --sb-chip-border
+   
+   Shared chip colors (Charlie-approved):
+   PASS: #1a7f37, WAIT: #9a6700, FAIL: #cf222e */
+
 .scoreboard {
-  background: var(--surface);
+  /* Theme-aware fallbacks */
+  background: var(--sb-surface, var(--surface));
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px 24px;
@@ -1403,6 +1412,7 @@ body::before {
   font-weight: 800;
   letter-spacing: -0.3px;
   margin: 0;
+  color: var(--sb-fg, var(--text));
 }
 .scoreboard__title::before { display: none; }
 
@@ -1413,7 +1423,7 @@ body::before {
   flex-wrap: wrap;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--sb-muted, var(--text-dim));
 }
 
 .scoreboard__score {
@@ -1444,16 +1454,17 @@ body::before {
   box-shadow: 0 4px 12px -6px color-mix(in srgb, var(--gauge-color) 40%, transparent);
 }
 
+/* Shared chip colors (Charlie-approved solid pills) */
 .gauge--pass {
-  --gauge-color: var(--green);
+  --gauge-color: var(--sb-pass, #1a7f37);
 }
 
 .gauge--wait {
-  --gauge-color: var(--amber);
+  --gauge-color: var(--sb-wait, #9a6700);
 }
 
 .gauge--fail {
-  --gauge-color: #dc2626;
+  --gauge-color: var(--sb-fail, #cf222e);
 }
 
 .gauge__header {
@@ -1468,7 +1479,7 @@ body::before {
   font-size: 13px;
   font-weight: 700;
   line-height: 1.3;
-  color: var(--text);
+  color: var(--sb-fg, var(--text));
 }
 
 .gauge__status {
@@ -1477,8 +1488,9 @@ body::before {
   font-weight: 600;
   letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: var(--gauge-color);
-  background: color-mix(in srgb, var(--gauge-color) 12%, transparent);
+  color: #ffffff;
+  background: var(--gauge-color);
+  border: 1px solid var(--sb-chip-border, var(--gauge-color));
   border-radius: 4px;
   padding: 2px 6px;
   flex-shrink: 0;
@@ -1486,7 +1498,7 @@ body::before {
 
 .gauge__evidence {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--sb-muted, var(--text-dim));
   line-height: 1.45;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1496,7 +1508,7 @@ body::before {
 }
 
 .gauge__evidence a {
-  color: var(--gauge-color);
+  color: var(--sb-accent, var(--gauge-color));
   text-decoration: none;
 }
 
@@ -1507,12 +1519,43 @@ body::before {
 .gauge__detail {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--text-dim);
+  color: var(--sb-muted, var(--text-dim));
   margin-top: 4px;
 }
 
 @media (max-width: 760px) {
   .scoreboard__gauges {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Print styles for PNG/PDF export — preserve colors and layout */
+@media print {
+  @page { size: auto; margin: 12mm; }
+  
+  .scoreboard {
+    background: var(--sb-surface, var(--surface)) !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .gauge,
+  .gauge__status {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .gauge__status {
+    background: var(--gauge-color) !important;
+    color: #ffffff !important;
+  }
+  
+  .gauge__evidence a {
+    color: inherit;
+    text-decoration: none;
+  }
+  
+  .no-print {
+    display: none !important;
   }
 }

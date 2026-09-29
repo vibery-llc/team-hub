@@ -1,0 +1,33 @@
+{
+  "board": "cos-hanging-thread",
+  "title": "Chief of Staff — hanging threads",
+  "brand": {
+    "primary": "#6b8cae",
+    "pass": "#1a7f37",
+    "wait": "#9a6700",
+    "fail": "#cf222e",
+    "surface": "#1a1d24",
+    "bg": "#0f1115",
+    "logo": null,
+    "fg": "#e8eaed",
+    "muted": "#9aa0a6",
+    "accent": "#6b8cae",
+    "chipBorder": "rgba(255, 255, 255, 0.12)",
+    "type": {
+      "display": "Inter",
+      "body": "Inter",
+      "mono": "IBM Plex Mono"
+    },
+    "mark": "No CoS brand kit — monogram optional later; wordmark Chief of Staff"
+  },
+  "gauge_set": [
+    "vibery_1509",
+    "vibery_1479",
+    "btf_164",
+    "btf_168",
+    "btf_166_167",
+    "compass_hub_inputs",
+    "jenny_timesheet"
+  ],
+  "notes": "Neutral executive dark — deliberately not KF parchment/orange and not Vibery glass. No logo asset found; logo:null until Charlie supplies a mark. Live pilot keys (2026-09-29). Category defaults if rolling a fresh hanging-thread board: open_threads / waiting_on / blocked / drift / top_moves."
+}

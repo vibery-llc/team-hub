@@ -1,0 +1,32 @@
+{
+  "board": "vibery-session-zero",
+  "title": "Vibery / Session Zero ship",
+  "brand": {
+    "primary": "#5eadff",
+    "pass": "#1a7f37",
+    "wait": "#9a6700",
+    "fail": "#cf222e",
+    "surface": "#162033",
+    "bg": "#101b2b",
+    "logo": "/workspace/vibery-brand/master-orbit-check-v.png",
+    "fg": "#f2f5fa",
+    "muted": "#8b95a5",
+    "accent": "#5eadff",
+    "chipBorder": "rgba(255, 255, 255, 0.14)",
+    "type": {
+      "display": "Sora",
+      "body": "DM Sans",
+      "mono": "IBM Plex Mono"
+    },
+    "mark": "Orbit check-V (arctic-mist on dark-glass badge); wordmark vibery lowercase — see vibery-brand/lockups/LOCKUPS.md"
+  },
+  "gauge_set": [
+    "tip_ci_staging",
+    "staging_canary_1514",
+    "angel_prod_1479",
+    "pr_1509_med_hold",
+    "sz_pin",
+    "pr_1515_autoship"
+  ],
+  "notes": "Arctic-mist #5eadff on dark glass #101b2b from vibery/DESIGN.md + LOCKUPS.md. Surface is opaque stand-in for glass panel (#162033). Live pilot gauge keys (2026-09-29). Alternate skill default for a fresh ship board: detect → build → coffee → land → canary → close (ship-pipeline SKILL). Do not recolor the orbit badge per theme."
+}
