@@ -1374,3 +1374,190 @@ body::before {
 .cautions li { font-size: 14px; }
 .cautions { margin: 8px 0 0 1.2em; }
 .clip .btn-row { margin: 0; gap: 6px; }
+
+/* ---- pipeline scoreboard ------------------------------------------------- */
+/* At-a-glance status strip showing PASS/WAIT/FAIL gauges with evidence.
+   Enabled via hub.config.js pipelineScoreboard.
+   
+   Theme variables (applied by hub.js when theme JSON loads):
+   --sb-bg, --sb-surface, --sb-fg, --sb-muted, --sb-primary, --sb-accent,
+   --sb-pass, --sb-wait, --sb-fail, --sb-chip-border
+   
+   Shared chip colors (Charlie-approved):
+   PASS: #1a7f37, WAIT: #9a6700, FAIL: #cf222e */
+
+.scoreboard {
+  /* Theme-aware fallbacks */
+  background: var(--sb-surface, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin: 0 0 32px;
+}
+.scoreboard[hidden] { display: none; }
+
+.scoreboard__title {
+  font-size: clamp(20px, 4vw, 24px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px 0;
+  color: var(--sb-fg, var(--text));
+}
+.scoreboard__title::before { display: none; }
+
+.scoreboard__meta {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--sb-muted, var(--text-dim));
+  margin: 0 0 12px 0;
+}
+
+.scoreboard__asof {
+  font-size: 13px;
+}
+
+.scoreboard__score {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 14px;
+}
+
+.sb-pass-count { color: var(--sb-pass, #1a7f37); }
+.sb-wait-count { color: var(--sb-wait, #9a6700); }
+.sb-fail-count { color: var(--sb-fail, #cf222e); }
+
+.scoreboard__gauges {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0;
+  font-size: 14px;
+}
+
+.gauge {
+  display: contents;
+}
+
+.gauge__label,
+.gauge__status,
+.gauge__evidence {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.gauge__label {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--sb-fg, var(--text));
+}
+
+/* Shared chip colors (Charlie-approved solid pills) */
+.gauge__status {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: center;
+  white-space: nowrap;
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 3px 10px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  line-height: 1.3;
+  align-self: center;
+}
+
+.gauge--pass .gauge__status {
+  background: var(--sb-pass, #1a7f37);
+  border: 1px solid color-mix(in srgb, var(--sb-pass, #1a7f37) 70%, #000);
+  border-bottom: 1px solid var(--border);
+}
+
+.gauge--wait .gauge__status {
+  background: var(--sb-wait, #9a6700);
+  border: 1px solid color-mix(in srgb, var(--sb-wait, #9a6700) 70%, #000);
+  border-bottom: 1px solid var(--border);
+}
+
+.gauge--fail .gauge__status {
+  background: var(--sb-fail, #cf222e);
+  border: 1px solid color-mix(in srgb, var(--sb-fail, #cf222e) 70%, #000);
+  border-bottom: 1px solid var(--border);
+}
+
+.gauge__evidence {
+  font-size: 13px;
+  color: var(--sb-muted, var(--text-dim));
+  line-height: 1.45;
+}
+
+.gauge__evidence a {
+  color: var(--sb-accent, var(--accent));
+  text-decoration: none;
+}
+
+.gauge__evidence a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 760px) {
+  .scoreboard__gauges {
+    grid-template-columns: 1fr;
+  }
+  
+  .gauge__label,
+  .gauge__status,
+  .gauge__evidence {
+    border-bottom: none;
+  }
+  
+  .gauge {
+    display: block;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .gauge__status {
+    margin: 6px 0;
+    display: inline-block;
+  }
+  
+  .gauge__evidence {
+    margin-top: 4px;
+  }
+}
+
+/* Print styles for PNG/PDF export — preserve colors and layout */
+@media print {
+  @page { size: auto; margin: 12mm; }
+  
+  .scoreboard {
+    background: var(--sb-surface, var(--surface)) !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .gauge,
+  .gauge__status {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .gauge__status {
+    background: var(--gauge-color) !important;
+    color: #ffffff !important;
+  }
+  
+  .gauge__evidence a {
+    color: inherit;
+    text-decoration: none;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+}

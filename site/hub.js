@@ -512,4 +512,174 @@
       }
     }
   }).observe(document.documentElement, { childList: true, subtree: true });
+
+  /* 7. Pipeline scoreboard.
+
+     At-a-glance status strip showing PASS/WAIT/FAIL gauges with evidence.
+     Enabled via hub.config.js pipelineScoreboard; hidden when disabled.
+     Reads snapshot.json (canonical array schema) and renders gauge tiles.
+     Loads theme pack by board ID to apply brand tokens.
+
+     Status enum: PASS | WAIT | FAIL. Open PR ≠ PASS unless gauge rule says so.
+     Canonical schema: docs/pipeline-scoreboard-schema.md
+     Shared chip colors: PASS #1a7f37, WAIT #9a6700, FAIL #cf222e */
+  const scoreboardConfig = CONFIG.pipelineScoreboard || {};
+  if (scoreboardConfig.enabled && scoreboardConfig.snapshotPath) {
+    const section = document.getElementById("pipeline-scoreboard");
+    if (section) {
+      fetch(scoreboardConfig.snapshotPath, { cache: "no-cache" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data || !Array.isArray(data.gauges)) return;
+
+          // Load theme pack by board ID
+          const boardId = data.board || "";
+          const themePromise = boardId
+            ? fetch(`themes/${boardId}.json`, { cache: "no-cache" })
+                .then((r) => (r.ok ? r.json() : null))
+                .catch(() => null)
+            : Promise.resolve(null);
+
+          return themePromise.then((theme) => {
+            // Helper: extract short label from evidence (last segment or #PR)
+            const shortEvidence = (evidence) => {
+              if (!evidence) return "";
+              if (Array.isArray(evidence)) {
+                const first = evidence[0];
+                const short = shortEvidence(first);
+                return evidence.length > 1 ? `${short} +${evidence.length - 1} more` : short;
+              }
+              
+              // URL: extract meaningful part
+              if (/^https?:\/\//.test(evidence)) {
+                try {
+                  const url = new URL(evidence);
+                  const path = url.pathname;
+                  // GitHub PR/issue: #123
+                  const prMatch = path.match(/\/pull\/(\d+)|\/issues\/(\d+)/);
+                  if (prMatch) return `#${prMatch[1] || prMatch[2]}`;
+                  // Actions run: runs/123
+                  const runMatch = path.match(/\/runs\/(\d+)/);
+                  if (runMatch) return `runs/${runMatch[1]}`;
+                  // Last segment
+                  const segments = path.split('/').filter(Boolean);
+                  if (segments.length > 0) return decodeURIComponent(segments[segments.length - 1]);
+                  return url.host;
+                } catch (e) {
+                  return evidence.substring(0, 32) + "…";
+                }
+              }
+              
+              // Path: basename + parent folder
+              if (evidence.startsWith('/')) {
+                const segments = evidence.split('/').filter(Boolean);
+                if (segments.length > 1) {
+                  return `${segments[segments.length - 2]}/${segments[segments.length - 1]}`;
+                }
+                return segments[segments.length - 1] || evidence;
+              }
+              
+              // Short text as-is
+              return evidence.length > 48 ? evidence.substring(0, 45) + "…" : evidence;
+            };
+
+            // Apply theme CSS custom properties
+            if (theme && theme.brand) {
+              const b = theme.brand;
+              if (b.bg) section.style.setProperty("--sb-bg", b.bg);
+              if (b.surface) section.style.setProperty("--sb-surface", b.surface);
+              if (b.fg) section.style.setProperty("--sb-fg", b.fg);
+              if (b.muted) section.style.setProperty("--sb-muted", b.muted);
+              if (b.primary) section.style.setProperty("--sb-primary", b.primary);
+              if (b.accent) section.style.setProperty("--sb-accent", b.accent || b.primary);
+              if (b.pass) section.style.setProperty("--sb-pass", b.pass);
+              if (b.wait) section.style.setProperty("--sb-wait", b.wait);
+              if (b.fail) section.style.setProperty("--sb-fail", b.fail);
+              if (b.chipBorder) section.style.setProperty("--sb-chip-border", b.chipBorder);
+            }
+
+            // Render scoreline from score (object or string)
+            // Accept both lowercase (canonical: pass/wait/fail) and uppercase (PASS/WAIT/FAIL)
+            let scoreline = "";
+            if (typeof data.score === "string") {
+              scoreline = data.score;
+            } else {
+              const score = data.score || {};
+              const pass = score.pass || score.PASS || 0;
+              const wait = score.wait || score.WAIT || 0;
+              const fail = score.fail || score.FAIL || 0;
+              const parts = [];
+              if (pass > 0) parts.push(`<span class="sb-pass-count">${pass} pass</span>`);
+              if (wait > 0) parts.push(`<span class="sb-wait-count">${wait} wait</span>`);
+              if (fail > 0) parts.push(`<span class="sb-fail-count">${fail} fail</span>`);
+              scoreline = parts.length > 0 ? parts.join(" · ") : "no gauges";
+            }
+
+            const scoreEl = document.getElementById("scoreboard-score");
+            if (scoreEl) scoreEl.innerHTML = scoreline;
+
+            const asofEl = document.getElementById("scoreboard-asof");
+            if (asofEl && data.as_of) asofEl.textContent = `as of ${data.as_of}`;
+
+            // Update title (use theme.title or snapshot.title, fall back to "Pipeline Status")
+            const titleEl = section.querySelector(".scoreboard__title");
+            if (titleEl) {
+              titleEl.textContent = (theme && theme.title) || data.title || "Pipeline Status";
+            }
+
+            // Render gauges (array form) as table
+            const container = document.getElementById("scoreboard-gauges");
+            if (!container) return;
+
+            const gaugeHTML = data.gauges.map((g) => {
+              const status = String(g.status || "").toUpperCase();
+              const statusClass = status === "PASS" ? "pass" : status === "WAIT" ? "wait" : "fail";
+              
+              // Evidence: short label with full URL in href
+              let evidenceHTML = "";
+              const rawEvidence = g.evidence || "";
+              const shortLabel = shortEvidence(rawEvidence);
+              
+              if (Array.isArray(rawEvidence)) {
+                const first = rawEvidence[0];
+                if (/^https?:\/\//.test(first)) {
+                  evidenceHTML = `<a href="${esc(first)}">${esc(shortLabel)}</a>`;
+                } else {
+                  evidenceHTML = esc(shortLabel);
+                }
+              } else if (/^https?:\/\//.test(rawEvidence)) {
+                evidenceHTML = `<a href="${esc(rawEvidence)}">${esc(shortLabel)}</a>`;
+              } else {
+                evidenceHTML = esc(shortLabel);
+              }
+
+              return `
+                <div class="gauge gauge--${statusClass}">
+                  <div class="gauge__label">${esc(g.label || g.key || "")}</div>
+                  <div class="gauge__status">${esc(status)}</div>
+                  <div class="gauge__evidence">${evidenceHTML}</div>
+                </div>`;
+            }).join("");
+
+            container.innerHTML = gaugeHTML;
+            section.hidden = false;
+
+            // Legacy: Apply custom brand colors from config if present (deprecated in favor of theme packs)
+            if (scoreboardConfig.brandColor) {
+              section.style.setProperty("--sb-accent", scoreboardConfig.brandColor);
+            }
+            if (scoreboardConfig.brandColorDim) {
+              section.style.setProperty("--sb-chip-border", scoreboardConfig.brandColorDim);
+            }
+
+            // Mark external links in the newly added content
+            markExternal(container);
+          });
+        })
+        .catch(() => {
+          /* snapshot.json not found or invalid — hide the section */
+          if (section) section.hidden = true;
+        });
+    }
+  }
 })();

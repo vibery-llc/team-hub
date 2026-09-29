@@ -24,7 +24,6 @@
   <a href="#s-numbers">Numbers</a>
   <a href="#s-usage">Usage</a>
   <a href="#s-media">Media</a>
-  <a href="#s-plan" data-needs-phases>P0–P5</a>
   <a href="#s-prs">Open PRs</a>
   <a href="#s-review" data-needs-tracker>In review</a>
   <a href="#s-done" data-needs-tracker>Done</a>
@@ -36,6 +35,16 @@
   <a class="btn btn--lg btn--ghost" data-icon="↑" href="files.html#s-drop">Drop a file</a>
   <a class="btn btn--lg btn--ghost" data-icon="↓" href="files.html#s-builds">Latest build</a>
   <a class="btn btn--lg btn--ghost" data-icon="→" href="meetings.html">Latest meeting</a>
+</section>
+
+<!-- Pipeline Scoreboard — enabled via hub.config.js pipelineScoreboard -->
+<section id="pipeline-scoreboard" class="scoreboard" hidden aria-label="Pipeline status">
+  <h2 class="scoreboard__title">Pipeline Status</h2>
+  <div class="scoreboard__meta">
+    <span class="scoreboard__asof" id="scoreboard-asof"></span>
+  </div>
+  <div class="scoreboard__score" id="scoreboard-score"></div>
+  <div class="scoreboard__gauges" id="scoreboard-gauges"></div>
 </section>
 
 <h1>What we're building right now</h1>
@@ -106,9 +115,14 @@
   <a class="btn btn--lg btn--ghost" data-icon="→" href="files.html#s-media">All media</a>
 </div>
 
+<!-- P0–P5 ladder retired in favor of pipeline scoreboard (2026-09-29).
+     Teams using phases should migrate to gauges[] in snapshot.json.
+     Uncomment below to restore the phases section if needed:
+
 <h2 id="s-plan" data-needs-phases>The P0–P5 plan</h2>
 <p class="lead" id="phases-blurb" data-needs-phases></p>
 <div class="phases" id="phases" data-needs-phases></div>
+-->
 
 
 <footer class="site" data-hub-shell></footer>

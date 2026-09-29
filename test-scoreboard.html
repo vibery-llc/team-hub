@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline Scoreboard Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site/style.css">
+<script>
+// Test config with scoreboard enabled
+globalThis.HUB_CONFIG = {
+  org: "Test Team",
+  siteName: "Scoreboard Test",
+  pipelineScoreboard: {
+    enabled: true,
+    board: "test-board",
+    snapshotPath: "site/snapshot.json"
+  }
+};
+</script>
+<script defer src="site/hub.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pipeline Scoreboard Test</h1>
+  <p class="lead">Testing scoreboard rendering with example snapshot.json</p>
+  
+  <!-- Pipeline Scoreboard -->
+  <section id="pipeline-scoreboard" class="scoreboard" hidden aria-label="Pipeline status">
+    <div class="scoreboard__header">
+      <h2 class="scoreboard__title">Pipeline Status</h2>
+      <div class="scoreboard__meta">
+        <span class="scoreboard__score" id="scoreboard-score">loading…</span>
+        <span class="scoreboard__asof" id="scoreboard-asof">…</span>
+      </div>
+    </div>
+    <div class="scoreboard__gauges" id="scoreboard-gauges"></div>
+  </section>
+
+  <h2>Expected behavior</h2>
+  <ul>
+    <li>Scoreboard section should be visible (not hidden)</li>
+    <li>Score should show: "2 pass · 2 wait · 1 fail"</li>
+    <li>As-of timestamp should display</li>
+    <li>5 gauge cards should render with appropriate colors</li>
+    <li>PASS gauges should be green</li>
+    <li>WAIT gauges should be amber</li>
+    <li>FAIL gauges should be red</li>
+    <li>Evidence URLs should be clickable links</li>
+  </ul>
+
+  <h2>Test status</h2>
+  <div id="test-results"></div>
+</div>
+
+<script>
+// Wait for scoreboard to render, then run tests
+setTimeout(() => {
+  const results = [];
+  const section = document.getElementById('pipeline-scoreboard');
+  const score = document.getElementById('scoreboard-score');
+  const asof = document.getElementById('scoreboard-asof');
+  const gauges = document.querySelectorAll('.gauge');
+
+  results.push({
+    test: 'Scoreboard is visible',
+    pass: section && !section.hidden
+  });
+
+  results.push({
+    test: 'Score displays correctly',
+    pass: score && score.textContent.includes('pass') && score.textContent.includes('wait') && score.textContent.includes('fail')
+  });
+
+  results.push({
+    test: 'As-of timestamp displays',
+    pass: asof && asof.textContent.includes('2026-09-29')
+  });
+
+  results.push({
+    test: 'Correct number of gauges (5)',
+    pass: gauges.length === 5
+  });
+
+  results.push({
+    test: 'PASS gauges are green',
+    pass: document.querySelectorAll('.gauge--pass').length === 2
+  });
+
+  results.push({
+    test: 'WAIT gauges are amber',
+    pass: document.querySelectorAll('.gauge--wait').length === 2
+  });
+
+  results.push({
+    test: 'FAIL gauges are red',
+    pass: document.querySelectorAll('.gauge--fail').length === 1
+  });
+
+  results.push({
+    test: 'Evidence links are clickable',
+    pass: document.querySelectorAll('.gauge__evidence a').length > 0
+  });
+
+  // Display results
+  const resultsEl = document.getElementById('test-results');
+  const passed = results.filter(r => r.pass).length;
+  const total = results.length;
+  
+  resultsEl.innerHTML = `
+    <div style="background: ${passed === total ? 'var(--green-dim)' : 'var(--amber-dim)'}; 
+                border: 1px solid var(--border); 
+                border-radius: 8px; 
+                padding: 16px; 
+                margin-top: 12px;">
+      <h3 style="margin: 0 0 12px 0;">${passed}/${total} tests passed</h3>
+      <ul style="list-style: none; padding: 0; margin: 0;">
+        ${results.map(r => `
+          <li style="padding: 4px 0; color: ${r.pass ? 'var(--green)' : '#dc2626'};">
+            ${r.pass ? '✓' : '✗'} ${r.test}
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+  `;
+
+  if (passed === total) {
+    console.log('✓ All scoreboard tests passed!');
+  } else {
+    console.error(`✗ ${total - passed} test(s) failed`);
+  }
+}, 500);
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "board": "btf-pipeline",
+  "title": "BTF Pipeline Scoreboard",
+  "brand": {
+    "primary": "#c2410c",
+    "pass": "#1a7f37",
+    "wait": "#9a6700",
+    "fail": "#cf222e",
+    "surface": "#ffffff",
+    "bg": "#faf6f0",
+    "logo": "/workspace/kf-hub-scoreboard-pr/site/brand/mark.png",
+    "fg": "#2c2a25",
+    "muted": "#7c756a",
+    "accent": "#c2410c",
+    "chipBorder": "rgba(60, 40, 20, 0.16)",
+    "type": {
+      "display": "Plus Jakarta Sans",
+      "body": "Plus Jakarta Sans",
+      "mono": "Azeret Mono"
+    },
+    "mark": "KF hammer + ember crown + flame (site/brand/mark.png); wordmark Kingdom Forge"
+  },
+  "gauge_set": [
+    "freeze",
+    "justin_inv",
+    "nick_inv",
+    "toolswing",
+    "reachcon",
+    "beautiful_corner",
+    "axe_gym"
+  ],
+  "notes": "Kingdom Forge hub parchment + orange plate (kf-hub style.css). Pass/Wait/Fail chips match Charlie-liked solid pills (#1a7f37 / #9a6700 / #cf222e). Gauge keys from BTF migrated snapshot + GAUGE-SCHEMA. Freeze is one gauge, not the board frame. Logo path is box-local; hub serves site/brand/mark.png."
+}

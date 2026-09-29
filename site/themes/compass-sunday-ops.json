@@ -1,0 +1,31 @@
+{
+  "board": "compass-sunday-ops",
+  "title": "Compass City — Sunday ops",
+  "brand": {
+    "primary": "#a8a6a1",
+    "pass": "#1a7f37",
+    "wait": "#9a6700",
+    "fail": "#cf222e",
+    "surface": "#f4f5f6",
+    "bg": "#dfe0e1",
+    "logo": "/workspace/scratch/compass-city-hub/site/brand/mark.png",
+    "fg": "#38383b",
+    "muted": "#626365",
+    "accent": "#a8a6a1",
+    "chipBorder": "#cfd1d3",
+    "type": {
+      "display": "Futura PT",
+      "body": "Jost",
+      "mono": "Azeret Mono"
+    },
+    "mark": "CC + north-needle (ink on paper); site/brand/mark.png — no orange Team Hub plate"
+  },
+  "gauge_set": [
+    "foh_audio",
+    "online_audio",
+    "starting_point_lights",
+    "cam3_jason",
+    "calendar_collisions"
+  ],
+  "notes": "Paper/ink/stone from compass-hub-design-lock/DESIGN.md + compass-city-hub site/style.css. Ink-on-paper mark only — do not borrow KF orange. Pass/Wait/Fail keep Charlie clear chips for mobile PNG; brand-tuned good/warn/bad (#5a9570 / #ca924c / #b94642) available if desk wants quieter badges. Gauge keys from 2026-09-29 pilot. Sensible readiness labels if rolling fresh: foh / media / stream / room / next_sunday."
+}
