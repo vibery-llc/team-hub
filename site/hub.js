@@ -21,9 +21,20 @@
      file still runs — a hub with no header beats a hub with no lightbox, no
      folds and no agent buttons. */
   const CONFIG = globalThis.HUB_CONFIG || {};
+  // Only new or explicitly opted-in configs change their landing page. Keep
+  // dashboard bookmarks and an explicit dashboard URL working on Pages, where
+  // /index.html canonicalizes to / (including its query and fragment).
+  const isDashboard = /^(?:index(?:\.html)?)?$/.test(location.pathname.split("/").pop());
+  if (CONFIG.overview?.enabled === true && isDashboard && !location.hash &&
+      new URLSearchParams(location.search).get("view") !== "dashboard") {
+    location.replace("overview.html");
+    return;
+  }
   const allNav = Array.isArray(CONFIG.nav) ? CONFIG.nav : [];
   const featureEnabled = (feature) => {
     if (!feature) return true;
+    if (feature === "onboarding") return CONFIG.onboarding?.enabled === true;
+    if (feature === "overview") return CONFIG.overview?.enabled === true;
     if (feature === "activityLog") {
       const owner = CONFIG.activityLog?.owner;
       return CONFIG.activityLog?.enabled === true && typeof owner === "string" && Boolean(owner.trim());
@@ -35,7 +46,7 @@
   // "/", "/index.html" and "/files.html" all have to resolve to a nav entry —
   // and so must "/files": Cloudflare Pages serves pretty URLs, 308ing the
   // ".html" form away, so the extension can never be part of the match.
-  const page = (name) => String(name).replace(/\.html$/, "");
+  const page = (name) => String(name).split(/[?#]/)[0].replace(/\.html$/, "");
   const file = location.pathname.split("/").pop() || "index.html";
   const here = allNav.find((n) => page(n.href) === page(file)) || nav[0];
 

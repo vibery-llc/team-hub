@@ -1,0 +1,41 @@
+{
+  "example": true,
+  "checkedAt": "2026-08-12T12:00:00Z",
+  "items": [
+    {
+      "title": "Search filters",
+      "status": "In progress",
+      "summary": "Add a date filter to the search screen.",
+      "next": "Check empty results and keyboard use.",
+      "sources": [
+        {
+          "label": "Example ticket queue",
+          "href": "index.html?view=dashboard#s-start"
+        }
+      ]
+    },
+    {
+      "title": "Import validation",
+      "status": "In review",
+      "summary": "Show which rows could not be imported and why.",
+      "next": "Review the error messages with the sample file.",
+      "sources": [
+        {
+          "label": "Example pull requests",
+          "href": "index.html?view=dashboard#s-prs"
+        }
+      ]
+    },
+    {
+      "title": "Setup guide",
+      "status": "Planned",
+      "summary": "Write the steps a new teammate needs on their first day.",
+      "sources": [
+        {
+          "label": "Setup page",
+          "href": "setup.html"
+        }
+      ]
+    }
+  ]
+}

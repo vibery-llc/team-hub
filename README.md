@@ -535,3 +535,20 @@ rules are the two that matter most.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+### Configured overview (draft)
+
+The example config enables a project overview. Existing configs without
+`overview.enabled: true` retain the dashboard home page. The dashboard always
+remains available at `index.html?view=dashboard`, including its optional pipeline
+scoreboard. Configuration, compatibility and remaining review work are described
+in [docs/configured-overview.md](docs/configured-overview.md).
+
+The optional `onboarding` block configures the guided journal (`start.html`) and
+alternate project map (`project-map.html`). Set `enabled: true`, a stable `id`,
+and valid steps to opt in. Labels, scripted helper copy, instructions, proof text
+and links come from configuration. Personal reports are local browser notes;
+they never establish access or project acceptance. Existing configs without the
+block continue to use their current dashboard and setup reference. See the
+[configuration and validation notes](docs/configured-overview.md) for fields,
+versioning, fallback behavior and review limits.

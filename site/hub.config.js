@@ -46,8 +46,9 @@ globalThis.HUB_CONFIG = {
      `title`  — browser tab text; defaults to "<label> — <siteName>".
      `footer` — footer text; defaults to `footer` above. */
   nav: [
+    { href: "overview.html", label: "Overview", feature: "overview" },
     {
-      href: "index.html",
+      href: "index.html?view=dashboard",
       label: "Dashboard",
       title: "Atlas — Team Hub",
       footer: "Auto-refreshes on a schedule via GitHub Actions",
@@ -71,10 +72,185 @@ globalThis.HUB_CONFIG = {
       footer: "Concise pointers to the real project records · accountable to a human owner",
       feature: "activityLog",
     },
-    { href: "setup.html", label: "Setup", title: "Setup — Get your agent running" },
+    { href: "start.html", label: "Get set up", feature: "onboarding" },
+    { href: "setup.html", label: "Setup reference", title: "Setup — Get your agent running" },
     { href: "guide.html", label: "Guide", title: "Guide — How we work with agents" },
     { href: "resources.html", label: "Resources", title: "Resources — Working with agents 101" },
   ],
+
+  /* New-clone landing page. Existing tenant configs without this block keep
+     their dashboard homepage. All overview prose, areas, icons and stages
+     belong here; source-linked work records live in the JSON file below.
+     Missing configuration or data shows useful links, never made-up progress.
+     Icons are optional local image paths; labels always remain visible. */
+  overview: {
+    enabled: true,
+    description: "Project areas, open work and team files.",
+    placesTitle: "Project areas",
+    places: [
+      { label: "Product", description: "Plan and review changes.", icon: "brand/overview-icons/product.svg",
+        detail: "Start with the problem and the behavior you want to change.",
+        links: [{ label: "Find a ticket", href: "index.html?view=dashboard#s-start" }] },
+      { label: "Development", description: "Build and test the implementation.", icon: "brand/overview-icons/development.svg",
+        detail: "Read the ticket and check the current branch before starting.",
+        links: [{ label: "Open pull requests", href: "index.html?view=dashboard#s-prs" }] },
+      { label: "Design", description: "Work on layouts and shared components.", icon: "brand/overview-icons/design.svg",
+        detail: "Keep references and the latest design files together.",
+        links: [{ label: "Team files", href: "files.html#s-drop" }] },
+      { label: "Review", description: "Check the result against the request.", icon: "brand/overview-icons/review.svg",
+        detail: "Record what you checked, on which version, and what still needs work.",
+        links: [{ label: "How we work", href: "guide.html" }] },
+    ],
+    placesNote: "Choose an area to see its links. These are areas of work, not delivery stages.",
+    /* Optional conceptual diagram: boxes contain objects; named references
+       point to one shared resource. It carries no progress or status meaning. */
+    referenceExample: {
+      title: "Shared components",
+      description: "Two screens can use the same component. Check both when the shared component changes.",
+      containers: [{ label: "Search screen", object: "Button instance" }, { label: "Settings screen", object: "Button instance" }],
+      referenceLabel: "references",
+      asset: "Button component",
+      caption: "Example only. Boxes show containment; references point to the shared component.",
+    },
+    workTitle: "Open work",
+    workPath: "overview.json",
+    /* Definitions describe your team's process. They do not infer a record's
+       status from a merged PR, passing check, or pipeline scoreboard value. */
+    stages: [
+      { label: "Planned", description: "The change and its checks are written down." },
+      { label: "In progress", description: "Someone is working on the change." },
+      { label: "In review", description: "The result is ready to check." },
+      { label: "Accepted", description: "The required review is recorded." },
+    ],
+    guidance: {
+      title: "Before starting",
+      items: [
+        { title: "Read the ticket", text: "Check what is needed and whether anyone is already working on it." },
+        { title: "Leave a useful handoff", text: "Link the change and the checks you ran. Say what is still unverified." },
+      ],
+      links: [{ label: "How we work", href: "guide.html" }, { label: "Setup instructions", href: "setup.html" }],
+    },
+  },
+
+  /* Personal setup notes only. Stable IDs preserve local progress across views.
+     No configured step can verify access, builds or review. Omit or disable
+     this block to keep guided onboarding out of existing tenant navigation. */
+  onboarding: {
+    "enabled": true,
+    "id": "first-contribution",
+    "version": 1,
+    "title": "Your first contribution.",
+    "description": "Get set up, learn the project, and bring one small change to review. We’ll take it a step at a time.",
+    "helperName": "Your guide",
+    "steps": [
+      {
+        "short": "Get set up",
+        "title": "Get your agent running.",
+        "body": "Choose the tool you want to use. Get it installed and signed in, then we’ll open the project together.",
+        "action": "Choose my agent",
+        "proof": "You can start a signed-in agent session on your machine. Your own check records setup; it does not prove project access.",
+        "instructions": [
+          "Ask your team which account or plan to use before paying.",
+          "Follow the setup instructions for your tool and operating system.",
+          "Sign in and start an agent session."
+        ],
+        "check": "I can start a signed-in session",
+        "id": "setup",
+        "reinforcement": "You’ve marked your agent as running. Next, let’s see it read the project. Continue when you’re ready.",
+        "links": [
+          {
+            "label": "Open setup instructions",
+            "href": "setup.html#s-pick"
+          }
+        ],
+        "selectAgent": true
+      },
+      {
+        "short": "Read the project",
+        "title": "Let it show you around.",
+        "body": "Open the project folder in your agent. Ask one read-only question and watch it find the answer in the files.",
+        "action": "Get my first prompt",
+        "proof": "The answer names files it actually read. Check one yourself. A personal note here does not independently verify repository access.",
+        "instructions": [
+          "Open the project folder in your agent.",
+          "Ask it to read AGENTS.md and explain how a small change is checked. Ask for the files it read and no edits yet.",
+          "Open one cited file and compare the answer."
+        ],
+        "check": "I checked a file against the answer",
+        "id": "read",
+        "reinforcement": "You’ve marked a file as checked against the answer. That’s how you check its work. Next, choose a small task with someone.",
+        "links": [
+          {
+            "label": "First-session instructions",
+            "href": "setup.html#s-first"
+          }
+        ]
+      },
+      {
+        "short": "Choose a task",
+        "title": "Start with one small change.",
+        "body": "Pick a task with a clear “Done =” line. For your first change, pair with a teammate before you begin.",
+        "action": "Plan my first task",
+        "proof": "A real ticket says what should happen, how you will check it, and links the work. Choosing a ticket does not claim or assign it.",
+        "instructions": [
+          "Find a small task in the dashboard’s Start here queue.",
+          "Read its acceptance line with a teammate.",
+          "Agree how you will show it works before editing."
+        ],
+        "check": "I chose a task with a teammate",
+        "id": "task",
+        "reinforcement": "You’ve marked your first task as chosen with a teammate. Keep its “Done =” line close while you work.",
+        "links": [
+          {
+            "label": "Open task queue",
+            "href": "index.html?view=dashboard#s-start"
+          }
+        ]
+      },
+      {
+        "short": "Make & check",
+        "title": "Make it. Then show it works.",
+        "body": "Keep the change small. Follow the project’s rules and check the exact revision you want reviewed.",
+        "action": "See the work-and-proof steps",
+        "proof": "Link the check result and visible proof to the same revision. A passing check does not prove the requested experience is right.",
+        "instructions": [
+          "Read the repository’s rules and agree how you will work.",
+          "Make the ticket’s change on its own branch.",
+          "Run the project’s required checks and capture the result in action."
+        ],
+        "check": "I gathered checks and visible proof",
+        "id": "make",
+        "reinforcement": "You’ve marked your proof as gathered. Take a moment to check that it shows the revision you want reviewed.",
+        "links": [
+          {
+            "label": "Read the project guide",
+            "href": "guide.html#s-proof"
+          }
+        ]
+      },
+      {
+        "short": "Bring to review",
+        "title": "Give someone a clear review.",
+        "body": "Show what changed, what you checked, and what still needs a look. Your reviewer decides whether the result meets the request.",
+        "action": "Prepare my review handoff",
+        "proof": "A reviewer’s decision belongs on the real work record. No click here can mark a change accepted or merged.",
+        "instructions": [
+          "Link the ticket and exact revision in the pull request.",
+          "Add check results and visible proof.",
+          "Say what remains unverified and request the normal human review."
+        ],
+        "check": "I prepared the review handoff",
+        "id": "review",
+        "reinforcement": "You’ve marked the handoff as prepared. The reviewer’s decision stays on the work record; this quest doesn’t approve it.",
+        "links": [
+          {
+            "label": "Read the review guide",
+            "href": "guide.html#s-rules"
+          }
+        ]
+      }
+    ]
+  },
 
   /* The repository your team works in — NOT this hub's own repo. The agent
      launcher opens sessions against it, and fetch-data.mjs reads its PRs and
