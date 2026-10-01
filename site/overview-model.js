@@ -46,6 +46,8 @@
     // Require a complete ISO timestamp: permissive Date parsing can turn a
     // mistyped year or timezone-free date into a false verification claim.
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return 'Verification time not recorded. Check the linked sources.';
+    const calendar = new Date(value.slice(0, 10) + 'T00:00:00Z');
+    if (!Number.isFinite(calendar.getTime()) || calendar.toISOString().slice(0, 10) !== value.slice(0, 10)) return 'Verification time is invalid. Check the linked sources.';
     const date = new Date(value);
     if (!Number.isFinite(date.getTime()) || date.getTime() > now) return 'Verification time is invalid. Check the linked sources.';
     const days = Math.floor((now - date.getTime()) / 86400000);

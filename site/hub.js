@@ -33,6 +33,7 @@
   const allNav = Array.isArray(CONFIG.nav) ? CONFIG.nav : [];
   const featureEnabled = (feature) => {
     if (!feature) return true;
+    if (feature === "onboarding") return CONFIG.onboarding?.enabled === true;
     if (feature === "overview") return CONFIG.overview?.enabled === true;
     if (feature === "activityLog") {
       const owner = CONFIG.activityLog?.owner;

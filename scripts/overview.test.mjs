@@ -56,3 +56,9 @@ test('shipped example is clearly marked and has valid local sources', async () =
   const data = model.records(JSON.parse(await readFile(new URL('../site/overview.json', import.meta.url), 'utf8')));
   assert.equal(data.example, true); assert.equal(data.items.length, 3);
 });
+test('impossible calendar dates never become a checked timestamp', () => {
+  const now = Date.parse('2026-10-01T00:00:00Z');
+  assert.match(model.freshness('2026-02-30T00:00:00Z', now), /invalid/);
+  assert.match(model.freshness('2026-04-31T00:00:00+02:00', now), /invalid/);
+  assert.match(model.freshness('2024-02-29T00:00:00Z', now), /Checked/);
+});

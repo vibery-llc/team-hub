@@ -1,6 +1,7 @@
 /* Tenant prose is text, never HTML. The overview does not infer acceptance. */
 (async () => {
   const model = globalThis.HubOverview;
+  if (!model) return;
   const settings = model.config(globalThis.HUB_CONFIG?.overview);
   const byId = (id) => document.getElementById(`overview-${id}`);
   const node = (tag, text, className) => {
@@ -16,8 +17,10 @@
       parent.append(a);
     }
   };
+  document.querySelector('[data-needs-tracker]').hidden = !globalThis.HUB_CONFIG?.tracker?.kind || globalThis.HUB_CONFIG.tracker.kind === 'none';
   if (!settings.enabled) return;
   byId('empty').hidden = true;
+  byId('onboarding-link').hidden = globalThis.HUB_CONFIG?.onboarding?.enabled !== true;
   if (settings.description) byId('description').textContent = settings.description;
   byId('scoreboard-link').hidden = globalThis.HUB_CONFIG?.pipelineScoreboard?.enabled !== true;
 

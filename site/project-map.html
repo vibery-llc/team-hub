@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Project field map — Team Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" href="brand/mark-32.png">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="quest.css">
+<script src="hub.config.js">
+</script>
+<script defer src="hub.js">
+</script>
+<script defer src="overview-model.js">
+</script>
+<script defer src="quest-model.js">
+</script>
+<script defer src="quest.js">
+</script>
+<body class="quest-page map">
+<a class="skiplink" href="#step-title">Skip to current step</a>
+<div class="wrap">
+<header class="site" data-hub-shell>
+</header>
+<nav class="quest-view-switch" aria-label="Setup views">
+<a href="start.html">Quest journal</a>
+<a href="project-map.html" aria-current="page">Project map</a>
+<a href="setup.html">All setup instructions</a>
+</nav>
+<div class="intro" id="quest-intro">
+<div>
+<h1 id="quest-title">Your project</h1>
+<p id="quest-description">Get your bearings. Then follow the main quest from setup to your first reviewed change.</p>
+</div>
+<a class="skip" href="overview.html">I’m set up. Open the project.</a>
+</div>
+<p id="quest-unavailable" class="callout">Guided setup is not configured. <a href="setup.html">Open the setup instructions</a> or <a href="index.html?view=dashboard">the dashboard</a>.</p>
+<main class="body" id="quest-body" hidden>
+<aside class="rail">
+<h2>Your main quest</h2>
+<ol class="route" aria-label="Contribution steps" id="quest-steps"></ol>
+<p id="saved-count">
+</p>
+</aside>
+<section class="focus" aria-labelledby="step-title">
+<p class="chapter" id="chapter">Main quest</p>
+<h2 id="step-title" tabindex="-1">Your next step</h2>
+<aside class="angel" aria-label="Guide notes">
+<div>
+<strong id="quest-helper">Your guide</strong>
+<p id="step-body" aria-live="polite">Choose the tool you want to use. Get it installed and signed in, then we’ll open the project together.</p>
+</div>
+</aside>
+<p class="quest-availability">Scripted guide · chat is not connected</p>
+<button class="btn primary action" id="action" aria-expanded="false" aria-controls="instructions">Choose my agent</button>
+<div class="instructions" id="instructions" hidden>
+<div id="instructions-body">
+</div>
+<label class="confirm">
+<input type="checkbox" id="reported">
+<span id="check-copy">
+</span>
+</label>
+<small>Personal note on this browser. It is not independent verification.</small>
+<p id="feedback" class="status" role="status">
+</p>
+<div class="controls">
+<button class="btn" id="next">Preview next step</button>
+</div>
+</div>
+<div class="proof">
+<h3>How you’ll know</h3>
+<p id="proof-copy">You can start a signed-in agent session on your machine. Your own check records setup; it does not prove project access.</p>
+<div class="proof-status" id="proof-status" aria-live="polite">No completion reported · no verification connected</div>
+</div>
+<details class="help">
+<summary>I’m stuck</summary>
+<p>Tell a teammate which step you’re on and what you expected to see. Leave out tokens and passwords.</p>
+<a href="setup.html">Open all setup instructions</a>
+<p class="muted">These are scripted guide notes. Chat is not connected.</p>
+</details>
+</section>
+<aside class="world" id="quest-world" hidden><h2 id="quest-places-title">Get to know the project</h2><p id="quest-places-note"></p><div class="scene-list" id="quest-places"></div><div class="destination"><h3>Where this work is heading</h3><p>Personal setup notes and project delivery are separate. Open the overview to inspect the work and its sources.</p><a href="overview.html">Project work &amp; evidence</a></div></aside>
+</main>
+<footer class="footer" id="quest-footer" hidden>
+<span id="storage-note">Quest notes stay in this browser. They do not verify access, builds or review.</span>
+<div class="mode">
+<button class="btn" id="theme">Dark appearance</button>
+<button class="quiet" id="reset" aria-expanded="false" aria-controls="reset-confirm">Clear my quest notes</button>
+</div>
+</footer>
+<section class="quest-reset" id="reset-confirm" hidden aria-label="Clear quest notes">
+<p>Clear only your quest steps and reports on this browser? Your agent choice and other Hub settings will stay.</p>
+<div class="controls">
+<button class="btn" id="confirm-reset">Clear quest notes</button>
+<button class="btn" id="cancel-reset">Keep my notes</button>
+</div>
+</section>
+</div>
+<noscript>
+<p>The guided steps need JavaScript. All setup instructions are available without it. <a href="setup.html">Open the existing setup guide.</a>
+</p>
+</noscript>
+</body>
+</html>

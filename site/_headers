@@ -30,3 +30,12 @@
 
 /overview.json
   Cache-Control: no-cache
+
+/quest.css
+  Cache-Control: no-cache
+
+/quest-model.js
+  Cache-Control: no-cache
+
+/quest.js
+  Cache-Control: no-cache

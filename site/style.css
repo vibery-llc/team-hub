@@ -1629,3 +1629,12 @@ body::before {
   .overview-container { padding: 8px; font-size: 12px; }
   .overview-object { padding: 8px; font-size: 12px; }
 }
+/* Secondary overview text must remain readable on both pale surfaces. */
+#overview { --overview-dim: #686054; }
+.overview-heading .lead, .overview-caption, .overview-work-status,
+.overview-status-key span { color: var(--overview-dim); }
+.overview-links a { display: inline-flex; align-items: center; min-height: 32px; }
+.overview-reference summary, .overview-status-key summary { min-height: 44px; }
+#overview [hidden] { display: none !important; }
+@media (prefers-color-scheme: dark) { #overview { --overview-dim: #b9ae9d; } }
+@media (prefers-reduced-motion: reduce) { html:has(#overview) { scroll-behavior: auto; } }
