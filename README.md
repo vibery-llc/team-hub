@@ -535,3 +535,11 @@ rules are the two that matter most.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+### Configured overview (draft)
+
+The example config enables a project overview. Existing configs without
+`overview.enabled: true` retain the dashboard home page. The dashboard always
+remains available at `index.html?view=dashboard`, including its optional pipeline
+scoreboard. Configuration, compatibility and remaining review work are described
+in [docs/configured-overview.md](docs/configured-overview.md).

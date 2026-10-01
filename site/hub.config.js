@@ -46,8 +46,9 @@ globalThis.HUB_CONFIG = {
      `title`  — browser tab text; defaults to "<label> — <siteName>".
      `footer` — footer text; defaults to `footer` above. */
   nav: [
+    { href: "overview.html", label: "Overview", feature: "overview" },
     {
-      href: "index.html",
+      href: "index.html?view=dashboard",
       label: "Dashboard",
       title: "Atlas — Team Hub",
       footer: "Auto-refreshes on a schedule via GitHub Actions",
@@ -75,6 +76,60 @@ globalThis.HUB_CONFIG = {
     { href: "guide.html", label: "Guide", title: "Guide — How we work with agents" },
     { href: "resources.html", label: "Resources", title: "Resources — Working with agents 101" },
   ],
+
+  /* New-clone landing page. Existing tenant configs without this block keep
+     their dashboard homepage. All overview prose, areas, icons and stages
+     belong here; source-linked work records live in the JSON file below.
+     Missing configuration or data shows useful links, never made-up progress.
+     Icons are optional local image paths; labels always remain visible. */
+  overview: {
+    enabled: true,
+    description: "Project areas, open work and team files.",
+    placesTitle: "Project areas",
+    places: [
+      { label: "Product", description: "Plan and review changes.", icon: "brand/overview-icons/product.svg",
+        detail: "Start with the problem and the behavior you want to change.",
+        links: [{ label: "Find a ticket", href: "index.html?view=dashboard#s-start" }] },
+      { label: "Development", description: "Build and test the implementation.", icon: "brand/overview-icons/development.svg",
+        detail: "Read the ticket and check the current branch before starting.",
+        links: [{ label: "Open pull requests", href: "index.html?view=dashboard#s-prs" }] },
+      { label: "Design", description: "Work on layouts and shared components.", icon: "brand/overview-icons/design.svg",
+        detail: "Keep references and the latest design files together.",
+        links: [{ label: "Team files", href: "files.html#s-drop" }] },
+      { label: "Review", description: "Check the result against the request.", icon: "brand/overview-icons/review.svg",
+        detail: "Record what you checked, on which version, and what still needs work.",
+        links: [{ label: "How we work", href: "guide.html" }] },
+    ],
+    placesNote: "Choose an area to see its links. These are areas of work, not delivery stages.",
+    /* Optional conceptual diagram: boxes contain objects; named references
+       point to one shared resource. It carries no progress or status meaning. */
+    referenceExample: {
+      title: "Shared components",
+      description: "Two screens can use the same component. Check both when the shared component changes.",
+      containers: [{ label: "Search screen", object: "Button instance" }, { label: "Settings screen", object: "Button instance" }],
+      referenceLabel: "references",
+      asset: "Button component",
+      caption: "Example only. Boxes show containment; references point to the shared component.",
+    },
+    workTitle: "Open work",
+    workPath: "overview.json",
+    /* Definitions describe your team's process. They do not infer a record's
+       status from a merged PR, passing check, or pipeline scoreboard value. */
+    stages: [
+      { label: "Planned", description: "The change and its checks are written down." },
+      { label: "In progress", description: "Someone is working on the change." },
+      { label: "In review", description: "The result is ready to check." },
+      { label: "Accepted", description: "The required review is recorded." },
+    ],
+    guidance: {
+      title: "Before starting",
+      items: [
+        { title: "Read the ticket", text: "Check what is needed and whether anyone is already working on it." },
+        { title: "Leave a useful handoff", text: "Link the change and the checks you ran. Say what is still unverified." },
+      ],
+      links: [{ label: "How we work", href: "guide.html" }, { label: "Get set up", href: "setup.html" }],
+    },
+  },
 
   /* The repository your team works in — NOT this hub's own repo. The agent
      launcher opens sessions against it, and fetch-data.mjs reads its PRs and

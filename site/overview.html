@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="icon" href="brand/mark-32.png">
+<link rel="stylesheet" href="style.css">
+<script src="hub.config.js"></script>
+<script defer src="hub.js"></script>
+<script defer src="overview-model.js"></script>
+<script defer src="overview.js"></script>
+</head>
+<body>
+<a class="overview-skip" href="#overview">Skip to overview</a>
+<div class="wrap">
+<header class="site" data-hub-shell></header>
+<main id="overview">
+  <div class="overview-heading">
+    <div><p class="overview-eyebrow">Project overview</p><h1 data-hub-var="projectName">Your project</h1><p class="lead" id="overview-description">Project areas, open work and team files.</p></div>
+    <a class="btn btn--lg btn--ghost" href="index.html?view=dashboard">Full dashboard →</a>
+  </div>
+  <nav class="jumps" aria-label="Project links">
+    <a href="index.html?view=dashboard#s-start" data-needs-tracker>Find a ticket</a>
+    <a href="index.html?view=dashboard#s-prs">Open PRs</a>
+    <a href="files.html#s-builds">Latest build</a>
+    <a href="meetings.html">Meeting notes</a>
+    <a id="overview-scoreboard-link" href="index.html?view=dashboard#pipeline-scoreboard" hidden>Pipeline scoreboard</a>
+  </nav>
+  <p id="overview-empty" class="callout">No overview has been configured. The dashboard, meetings and files are still available.</p>
+  <noscript><p class="callout">JavaScript is needed to load the configured overview. Use the links above to open the dashboard, meetings or files.</p></noscript>
+  <section id="overview-places-section" class="overview-map" aria-labelledby="overview-places-title" hidden>
+    <h2 id="overview-places-title">Project areas</h2>
+    <div class="overview-places" id="overview-places"></div>
+    <p class="overview-caption" id="overview-places-note" hidden></p>
+    <details class="overview-reference" id="overview-reference" hidden>
+      <summary id="overview-reference-title"></summary>
+      <div class="overview-reference-body"><p id="overview-reference-description"></p><div class="overview-reference-example" id="overview-reference-example"></div><p class="overview-caption" id="overview-reference-caption"></p></div>
+    </details>
+  </section>
+  <section class="overview-work" id="overview-work-section" aria-labelledby="overview-work-title" hidden>
+    <div class="overview-section-head"><h2 id="overview-work-title">Open work</h2><a class="btn btn--ghost" href="index.html?view=dashboard">View dashboard →</a></div>
+    <p class="callout" id="overview-example" hidden>Example content from the fictional project shipped with this hub. Replace it with your team's records.</p>
+    <p class="overview-caption" id="overview-freshness" role="status">Loading update…</p>
+    <div id="overview-work"></div>
+    <details class="overview-status-key" id="overview-status-key" hidden><summary>Status guide</summary><ul id="overview-stages"></ul></details>
+  </section>
+  <section class="overview-guidance" id="overview-guidance-section" aria-labelledby="overview-guidance-title" hidden>
+    <h2 id="overview-guidance-title">Before starting</h2><div id="overview-guidance-items" class="overview-guidance-items"></div><div class="btn-row" id="overview-guidance-links"></div>
+  </section>
+</main>
+<footer data-hub-shell></footer>
+</div>
+</body>
+</html>
