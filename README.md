@@ -137,6 +137,8 @@ infrastructure.
 
 Then push to `main`. The workflow refreshes data and deploys.
 
+The scheduled run also commits the refreshed `data.json` and `history.json` back to `main`. If `main` is protected by a ruleset that requires pull requests, that push is refused and the daily history stops growing, although the site still deploys with fresh data and the run shows a warning. To keep the history, add a secret named `DATA_PUSH_TOKEN`: a token with Contents write access, from an account that is on the ruleset's bypass list. It is separate from `GH_PAT`, which stays read-only.
+
 > **Do the Access step before you put anything real in it.** Until that
 > application exists, your hub is publicly readable. `init.mjs` says so too.
 
