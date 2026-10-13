@@ -29,6 +29,28 @@
  */
 
 import { accessIdentity } from "../_shared/access.js";
+import { sameSiteWrite } from "../_shared/origin.js";
+import {
+  FEEDBACK_PREFIX,
+  PROPOSALS_PREFIX,
+  addComment,
+  buildFeedback,
+  buildProposal,
+  claimFeedback,
+  cleanPageKey,
+  feedbackKey,
+  noteKey,
+  proposalKey,
+  sortFeedback,
+} from "../_shared/collaborate.js";
+
+/** Tools that mutate feedback, notes or proposals. A cross-site caller is refused. */
+const WRITE_TOOLS = new Set([
+  "create_feedback",
+  "comment_on_feedback",
+  "claim_feedback",
+  "propose_note",
+]);
 
 const PROTOCOL_VERSION = "2025-06-18";
 /* The hub's name is per-deployment, so it comes from a wrangler.toml [vars]
@@ -190,6 +212,93 @@ const TOOLS = [
       required: ["area", "name"],
     },
   },
+  {
+    name: "list_feedback",
+    description:
+      "Claimable feedback queue for this hub. Each item is scoped to a page and carries its comments. Filter by page or status (open, claimed, done).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page: { type: "string", description: 'Hub page key, e.g. "index" or "meetings"' },
+        status: { type: "string", description: "open | claimed | done" },
+      },
+    },
+  },
+  {
+    name: "get_feedback",
+    description: "One feedback item and its comment thread.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Feedback item id" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "create_feedback",
+    description:
+      "File a feedback item against a hub page. Starts open and unclaimed so a person or agent can pick it up.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page: { type: "string", description: 'Hub page key, e.g. "index"' },
+        title: { type: "string" },
+        body: { type: "string" },
+      },
+      required: ["page", "title", "body"],
+    },
+  },
+  {
+    name: "comment_on_feedback",
+    description: "Add a comment to a feedback item. Comments stay on that item's page thread.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        body: { type: "string" },
+      },
+      required: ["id", "body"],
+    },
+  },
+  {
+    name: "claim_feedback",
+    description:
+      "Claim an open feedback item so others know it is being worked. Fails if someone else already holds it.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "list_notes",
+    description:
+      "Pinned notes on hub pages. One note per page. Agents cannot write these — use propose_note and wait for a human to approve.",
+    inputSchema: {
+      type: "object",
+      properties: { page: { type: "string", description: "Limit to one page key" } },
+    },
+  },
+  {
+    name: "propose_note",
+    description:
+      "Propose a pinned-note update for a hub page. A human must approve it in the hub before it becomes the pinned note. Do not treat a proposal as published.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page: { type: "string", description: 'Hub page key, e.g. "index"' },
+        body: { type: "string", description: "Proposed note text" },
+      },
+      required: ["page", "body"],
+    },
+  },
+  {
+    name: "list_note_proposals",
+    description: "Agent note proposals, pending first. Approval happens in the hub UI, not through MCP.",
+    inputSchema: {
+      type: "object",
+      properties: { page: { type: "string" } },
+    },
+  },
 ];
 
 const TYPE_BY_EXT = {
@@ -344,6 +453,119 @@ async function callTool(name, args, { env, request, identity }) {
       return ok({ uploaded: key, size: bytes.length, downloadUrl: `/api/dl?key=${encodeURIComponent(key)}` });
     }
 
+    case "list_feedback": {
+      if (!bucket) return fail("R2 bucket not bound");
+      const listed = await bucket.list({ prefix: FEEDBACK_PREFIX, limit: 1000 });
+      let items = [];
+      for (const o of listed.objects) {
+        const obj = await bucket.get(o.key);
+        if (obj) items.push(await obj.json());
+      }
+      const pageKey = args.page ? cleanPageKey(args.page) : null;
+      if (args.page && !pageKey) return fail("page must be a hub page key, e.g. index or meetings");
+      if (pageKey) items = items.filter((i) => i.page === pageKey);
+      if (args.status) items = items.filter((i) => i.status === args.status);
+      return ok({ count: items.length, items: sortFeedback(items) });
+    }
+
+    case "get_feedback": {
+      if (!bucket) return fail("R2 bucket not bound");
+      const obj = await bucket.get(feedbackKey(String(args.id || "")));
+      if (!obj) return fail(`no feedback item ${args.id}`);
+      return ok(await obj.json());
+    }
+
+    case "create_feedback": {
+      if (!bucket) return fail("R2 bucket not bound");
+      let item;
+      try { item = buildFeedback(args, identity); }
+      catch (e) { return fail(e.message); }
+      await bucket.put(feedbackKey(item.id), JSON.stringify(item), {
+        httpMetadata: { contentType: "application/json" },
+      });
+      return ok({ created: item.id, item });
+    }
+
+    case "comment_on_feedback": {
+      if (!bucket) return fail("R2 bucket not bound");
+      const obj = await bucket.get(feedbackKey(String(args.id || "")));
+      if (!obj) return fail(`no feedback item ${args.id}`);
+      let next;
+      try { next = addComment(await obj.json(), args.body, identity); }
+      catch (e) { return fail(e.message); }
+      await bucket.put(feedbackKey(next.id), JSON.stringify(next), {
+        httpMetadata: { contentType: "application/json" },
+      });
+      return ok({ item: next });
+    }
+
+    case "claim_feedback": {
+      if (!bucket) return fail("R2 bucket not bound");
+      const obj = await bucket.get(feedbackKey(String(args.id || "")));
+      if (!obj) return fail(`no feedback item ${args.id}`);
+      let next;
+      try { next = claimFeedback(await obj.json(), identity); }
+      catch (e) { return fail(e.message); }
+      await bucket.put(feedbackKey(next.id), JSON.stringify(next), {
+        httpMetadata: { contentType: "application/json" },
+      });
+      return ok({ item: next });
+    }
+
+    case "list_notes": {
+      if (!bucket) return fail("R2 bucket not bound");
+      const prefix = args.page
+        ? noteKey(cleanPageKey(args.page) || "")
+        : "notes/pages/";
+      if (args.page && !cleanPageKey(args.page)) return fail("page must be a hub page key");
+      if (args.page) {
+        const obj = await bucket.get(prefix);
+        return ok({ notes: obj ? [await obj.json()] : [] });
+      }
+      const listed = await bucket.list({ prefix, limit: 1000 });
+      const notes = [];
+      for (const o of listed.objects) {
+        const obj = await bucket.get(o.key);
+        if (obj) notes.push(await obj.json());
+      }
+      return ok({ count: notes.length, notes });
+    }
+
+    case "propose_note": {
+      if (!bucket) return fail("R2 bucket not bound");
+      let proposal;
+      try { proposal = buildProposal(args, identity); }
+      catch (e) { return fail(e.message); }
+      await bucket.put(proposalKey(proposal.id), JSON.stringify(proposal), {
+        httpMetadata: { contentType: "application/json" },
+      });
+      return ok({
+        proposed: proposal.id,
+        proposal,
+        note: "A human must approve this in the hub before it becomes the pinned note.",
+      });
+    }
+
+    case "list_note_proposals": {
+      if (!bucket) return fail("R2 bucket not bound");
+      const listed = await bucket.list({ prefix: PROPOSALS_PREFIX, limit: 1000 });
+      let proposals = [];
+      for (const o of listed.objects) {
+        const obj = await bucket.get(o.key);
+        if (obj) proposals.push(await obj.json());
+      }
+      const pageKey = args.page ? cleanPageKey(args.page) : null;
+      if (args.page && !pageKey) return fail("page must be a hub page key");
+      if (pageKey) proposals = proposals.filter((p) => p.page === pageKey);
+      proposals.sort((a, b) => {
+        const ra = a.status === "pending" ? 0 : 1;
+        const rb = b.status === "pending" ? 0 : 1;
+        if (ra !== rb) return ra - rb;
+        return String(b.proposedAt || "").localeCompare(String(a.proposedAt || ""));
+      });
+      return ok({ count: proposals.length, proposals });
+    }
+
     case "start_large_upload": {
       if (!bucket) return fail("R2 bucket not bound");
       let key;
@@ -383,12 +605,16 @@ async function handleRpc(msg, ctx) {
          withheld sections — can say so by setting HUB_MCP_INSTRUCTIONS. */
       instructions:
         (ctx && ctx.env && ctx.env.HUB_MCP_INSTRUCTIONS) ||
-        "Read-and-upload access to this team hub: meetings, decisions, action items, the agent-ready ticket queue, and the shared file store.",
+        "Read-and-upload access to this team hub: meetings, decisions, action items, the agent-ready ticket queue, the shared file store, the claimable feedback queue, and pinned notes. You may propose a note; a human must approve it before it is pinned. You cannot approve a proposal through MCP.",
     });
   }
   if (method === "tools/list") return rpcResult(id, { tools: TOOLS });
   if (method === "tools/call") {
     const name = params?.name;
+    if (WRITE_TOOLS.has(name)) {
+      const gate = sameSiteWrite(ctx.request);
+      if (!gate.ok) return rpcResult(id, fail(gate.error));
+    }
     try {
       return rpcResult(id, await callTool(name, params?.arguments, ctx));
     } catch (err) {

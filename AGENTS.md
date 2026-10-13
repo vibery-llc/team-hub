@@ -33,3 +33,13 @@ what, and turning it on is a tenant policy decision, not an agent's to make.
 An agent must not set `usageStats.attribution.enabled` to `true` or name its
 `owner` in `site/hub.config.js`. Only make that change after a human
 explicitly asks for per-person attribution to be turned on.
+
+## Feedback and pinned notes
+
+`feedback.enabled` and `notes.enabled` are tenant opt-ins. An agent must not
+turn them on.
+
+Agents may file feedback, comment, and claim an open item. They may propose
+a pinned-note update (`propose_note`). They must not pin a note, approve or
+reject a proposal, or treat a pending proposal as the published note. Those
+actions stay with a human in the hub.

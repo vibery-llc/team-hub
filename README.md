@@ -26,6 +26,8 @@ That is usually five SaaS subscriptions and a Slack channel. This is one repo.
 | **Meetings** | Summary, decisions, action items with contextual buttons, publishable clips, and a searchable transcript with visible redaction markers |
 | **Files & builds** | Drag-and-drop upload to R2, chunked so a multi-gigabyte build works, per-platform "download latest", image and video previews |
 | **Activity (optional)** | Human-owned, agent-friendly workstream updates that stay concise and point to the true project records; absent until a human opts in |
+| **Feedback (optional)** | A claimable queue of page-scoped items with a comment thread; absent from the nav until a human opts in |
+| **Pinned notes (optional)** | A note on each page. Agents may propose an update; a human must approve it before it is pinned |
 | **Setup / Guide / Resources** | Onboarding pages your team owns. Setup is a real agent-install walkthrough; the other two ship as examples to replace |
 | **MCP server** | The hub itself is an MCP server, so an agent in your repo can read meetings, action items and the ticket queue instead of a human relaying them |
 
@@ -144,7 +146,8 @@ Two things:
 
 - **`site/hub.config.js`** — one commented file. Org, site name, nav, repo,
   tracker, phase plan, dashboard links, agent prompt templates, the optional
-  Unity `game` block, and the optional activity-log opt-in.
+  Unity `game` block, the optional activity-log opt-in, and the optional
+  feedback-queue and pinned-notes flags.
 - **`site/brand/`** — `mark.png` plus `mark-32.png` and `mark-64.png`.
 
 That is the whole of "who this hub belongs to". Everything else is generic.
@@ -232,9 +235,10 @@ site/                 what deploys — plain files, no build
   _headers            cache rules
   data.json           written by scripts/fetch-data.mjs
   activity.json       optional, human-owned workstream pointers
+  feedback.html       optional claimable queue (opt-in via hub.config.js)
   meetings/           one JSON per meeting + transcripts
 functions/            Pages Functions — AT THE PROJECT ROOT, see below
-  api/                R2 file store: list, upload, chunked multipart, download
+  api/                R2 file store, usage, feedback, notes, proposals
   mcp/                MCP server over Streamable HTTP
 scripts/
   init.mjs            first-run setup
@@ -315,7 +319,9 @@ or prints it.
 `functions/mcp/` serves a Model Context Protocol server over Streamable HTTP:
 `list_meetings`, `get_meeting`, `search_transcript`, `list_action_items`,
 `list_agent_ready_tickets`, `list_files`, `latest_build`, `upload_file`,
-`start_large_upload`.
+`start_large_upload`, `list_feedback`, `get_feedback`, `create_feedback`,
+`comment_on_feedback`, `claim_feedback`, `list_notes`, `propose_note`,
+`list_note_proposals`.
 
 Hand-rolled JSON-RPC rather than the MCP SDK, because this repo has no build
 step and a dependency would mean adding `package.json` plus an npm install for
@@ -441,6 +447,39 @@ usageStats: {
 Usage events accumulate in R2 like anything else the API writes — small JSON
 objects, cheap on the free tier — and nothing prunes them automatically today.
 
+## Feedback queue and pinned notes
+
+Two optional collaborative surfaces, both off until a human sets the flag in
+`site/hub.config.js`. They live in R2 (not in git), behind the same Access
+gate as the file store.
+
+```js
+feedback: { enabled: true },
+notes: { enabled: true },
+```
+
+**Feedback.** A claimable queue of items scoped to a hub page (`index`,
+`meetings`, …). Each item has a comment thread. The Feedback page is the
+whole queue; every other page grows a "Feedback on this page" panel when
+the flag is on. Statuses are `open`, `claimed` and `done`. Claiming is
+exclusive — a second claimant gets `409`. Agents may file, comment and
+claim through MCP.
+
+**Pinned notes.** One note per page. A human can edit it in the hub. An
+agent may only *propose* an update (`propose_note`). Approve and reject are
+browser-only: a headerless POST (MCP, curl) is refused, even with a valid
+Access JWT. Approving writes the proposal body onto the pinned note.
+
+**Cross-site writes are refused.** Mutating requests to the feedback, notes
+and proposals routes, and MCP tools that write those stores, are refused
+when `Origin`, `Referer` or `Sec-Fetch-Site` names a different host. A
+signed-in person who also has another site open cannot be made to pin a
+note or file feedback from that other origin. Read tools and headerless
+same-site callers (MCP, `cloudflared access curl`) still work.
+
+Agents must not turn these flags on, and must not treat a pending proposal
+as published. See `AGENTS.md`.
+
 ## Publishing a meeting
 
 1. Transcribe locally — audio never leaves the machine:
@@ -499,8 +538,9 @@ only in files upstream does not compete for:
 | `guide.html`, `resources.html` | ships example prose |
 
 Everything else — `hub.js`, `style.css`, `index.html`, `meetings.html`,
-`files.html`, `activity.html`, `setup.html`, `functions/`, `scripts/` — should
-be **byte-identical to upstream**, and those merges fast-forward cleanly.
+`files.html`, `activity.html`, `feedback.html`, `setup.html`, `functions/`,
+`scripts/` — should be **byte-identical to upstream**, and those merges
+fast-forward cleanly.
 
 ### The conflict is the feature
 
@@ -521,7 +561,7 @@ To see how far you have drifted before merging:
 ```bash
 git fetch upstream
 git diff upstream/main --stat -- site/hub.js site/style.css site/index.html \
-  site/meetings.html site/files.html functions/ scripts/
+  site/meetings.html site/files.html site/feedback.html functions/ scripts/
 ```
 
 Empty output means zero drift. Anything listed is a local edit to product code
