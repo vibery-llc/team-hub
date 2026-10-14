@@ -28,6 +28,8 @@
       const owner = CONFIG.activityLog?.owner;
       return CONFIG.activityLog?.enabled === true && typeof owner === "string" && Boolean(owner.trim());
     }
+    if (feature === "feedback") return CONFIG.feedback?.enabled === true;
+    if (feature === "notes") return CONFIG.notes?.enabled === true;
     return false;
   };
   const nav = allNav.filter((item) => featureEnabled(item.feature));
@@ -680,6 +682,198 @@
           /* snapshot.json not found or invalid — hide the section */
           if (section) section.hidden = true;
         });
+    }
+  }
+
+  /* 8. Pinned notes and per-page feedback.
+
+     Tenant hubs grew a claimable queue and a per-page note that an agent may
+     only propose. Both are opt-in via hub.config.js. The widgets are painted
+     here so a new page does not have to declare them — same reason the shell
+     is not in the markup. A missing Function (local static server) leaves
+     them quiet rather than breaking the page. */
+  const pageKey = page(file) || "index";
+
+  const apiJson = (path, opts) =>
+    fetch(path, { cache: "no-store", ...opts }).then(async (r) => {
+      const text = await r.text();
+      let body;
+      try { body = JSON.parse(text); }
+      catch { throw new Error("the hub API is not running — use npx wrangler pages dev"); }
+      if (!r.ok) throw new Error(body.error || `${r.status}`);
+      return body;
+    });
+
+  const fmtWhen = (iso) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.valueOf())) return "";
+    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(d);
+  };
+
+  if (featureEnabled("notes")) {
+    const wrap = document.querySelector(".wrap");
+    const header = document.querySelector("header[data-hub-shell]");
+    if (wrap && header) {
+      const pin = document.createElement("aside");
+      pin.className = "pin";
+      pin.setAttribute("aria-label", "Pinned note");
+      header.after(pin);
+
+      const renderNote = async () => {
+        let note = { body: "", updatedBy: "", updatedAt: "" };
+        let proposals = [];
+        try {
+          note = (await apiJson(`/api/notes?page=${encodeURIComponent(pageKey)}`)).note || note;
+          proposals = (await apiJson(`/api/proposals?page=${encodeURIComponent(pageKey)}`)).proposals || [];
+        } catch (e) {
+          pin.hidden = true;
+          return;
+        }
+        pin.hidden = false;
+        const pending = proposals.filter((p) => p.status === "pending");
+        const pendingHtml = pending.length
+          ? `<div class="pin__proposals">
+              <p class="pin__label">Waiting on a human</p>
+              ${pending.map((p) => `
+                <article class="pin__proposal" data-proposal="${esc(p.id)}">
+                  <p>${esc(p.body)}</p>
+                  <p class="pin__meta">proposed by ${esc(p.proposedBy || "unknown")} · ${esc(fmtWhen(p.proposedAt))}</p>
+                  <div class="btn-row">
+                    <button type="button" class="btn btn--sm btn--ok" data-approve="${esc(p.id)}">Approve</button>
+                    <button type="button" class="btn btn--sm btn--danger" data-reject="${esc(p.id)}">Reject</button>
+                  </div>
+                </article>`).join("")}
+            </div>`
+          : "";
+        pin.innerHTML = `
+          <div class="pin__head"><span class="pin__label">Pinned note</span>${
+            note.updatedAt ? `<span class="pin__meta">${esc(note.updatedBy || "")} · ${esc(fmtWhen(note.updatedAt))}</span>` : ""
+          }</div>
+          <div class="pin__body">${note.body ? esc(note.body).replace(/\n/g, "<br>") : '<p class="pin__empty">Nothing pinned on this page.</p>'}</div>
+          <details class="pin__edit">
+            <summary>Edit note</summary>
+            <form>
+              <textarea name="body" rows="4" maxlength="8000" placeholder="A short note the team should see on this page.">${esc(note.body || "")}</textarea>
+              <div class="btn-row"><button type="submit" class="btn btn--sm">Save note</button></div>
+            </form>
+          </details>
+          ${pendingHtml}`;
+      };
+
+      pin.addEventListener("submit", async (ev) => {
+        if (!ev.target.matches(".pin__edit form")) return;
+        ev.preventDefault();
+        try {
+          await apiJson(`/api/notes?page=${encodeURIComponent(pageKey)}`, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ body: ev.target.body.value }),
+          });
+          await renderNote();
+        } catch (err) {
+          pin.querySelector(".pin__edit")?.insertAdjacentHTML("beforeend", `<div class="callout callout--amber">${esc(err.message)}</div>`);
+        }
+      });
+      pin.addEventListener("click", async (ev) => {
+        const approve = ev.target.closest("[data-approve]");
+        const reject = ev.target.closest("[data-reject]");
+        const id = approve?.dataset.approve || reject?.dataset.reject;
+        if (!id) return;
+        try {
+          await apiJson(`/api/proposals/${approve ? "approve" : "reject"}?id=${encodeURIComponent(id)}`, { method: "POST" });
+          await renderNote();
+        } catch (err) {
+          ev.target.closest("article")?.insertAdjacentHTML("beforeend", `<div class="callout callout--amber">${esc(err.message)}</div>`);
+        }
+      });
+      renderNote();
+    }
+  }
+
+  if (featureEnabled("feedback") && pageKey !== "feedback") {
+    const footer = document.querySelector("footer[data-hub-shell]");
+    if (footer) {
+      const box = document.createElement("section");
+      box.className = "page-fb";
+      box.id = "page-feedback";
+      footer.before(box);
+
+      const renderFeedback = async () => {
+        let items = [];
+        try {
+          items = (await apiJson(`/api/feedback?page=${encodeURIComponent(pageKey)}`)).items || [];
+        } catch (e) {
+          box.hidden = true;
+          return;
+        }
+        box.hidden = false;
+        const open = items.filter((i) => i.status !== "done");
+        box.innerHTML = `
+          <h2>Feedback on this page</h2>
+          <p class="lead">File something the team should fix or decide. Claim it if you are working it. The full queue is on <a href="feedback.html">Feedback</a>.</p>
+          <form class="page-fb__form">
+            <input name="title" maxlength="160" required placeholder="One-line title">
+            <textarea name="body" rows="3" maxlength="4000" required placeholder="What you saw, and what should happen instead."></textarea>
+            <div class="btn-row"><button type="submit" class="btn btn--sm">File feedback</button></div>
+          </form>
+          ${open.length ? `<ul class="page-fb__list">${open.map((item) => `
+            <li class="page-fb__item">
+              <div class="page-fb__top">
+                <strong>${esc(item.title)}</strong>
+                <span class="chip chip--${item.status === "claimed" ? "progress" : "todo"}">${esc(item.status)}${item.claimedBy ? ` · ${esc(item.claimedBy)}` : ""}</span>
+              </div>
+              <p>${esc(item.body)}</p>
+              <div class="page-fb__comments">${(item.comments || []).map((c) =>
+                `<p class="page-fb__comment"><span class="page-fb__who">${esc(c.author)}</span> ${esc(c.body)}</p>`
+              ).join("")}</div>
+              <form class="page-fb__comment-form" data-comment="${esc(item.id)}">
+                <input name="body" maxlength="2000" required placeholder="Add a comment">
+                <button type="submit" class="btn btn--sm">Comment</button>
+              </form>
+              <div class="btn-row">
+                ${item.status === "open" ? `<button type="button" class="btn btn--sm" data-claim="${esc(item.id)}">Claim</button>` : ""}
+                ${item.status === "claimed" ? `<button type="button" class="btn btn--sm" data-release="${esc(item.id)}">Release</button>` : ""}
+                <button type="button" class="btn btn--sm btn--ok" data-resolve="${esc(item.id)}">Resolve</button>
+              </div>
+            </li>`).join("")}</ul>` : `<p class="empty">Nothing open on this page.</p>`}`;
+
+      };
+      box.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        try {
+          if (ev.target.classList.contains("page-fb__form")) {
+            await apiJson("/api/feedback", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ page: pageKey, title: ev.target.title.value, body: ev.target.body.value }),
+            });
+          } else if (ev.target.dataset.comment) {
+            await apiJson(`/api/feedback/comment?id=${encodeURIComponent(ev.target.dataset.comment)}`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ body: ev.target.body.value }),
+            });
+          } else {
+            return;
+          }
+          await renderFeedback();
+        } catch (err) {
+          ev.target.insertAdjacentHTML("afterend", `<div class="callout callout--amber">${esc(err.message)}</div>`);
+        }
+      });
+      box.addEventListener("click", async (ev) => {
+        const btn = ev.target.closest("[data-claim], [data-release], [data-resolve]");
+        if (!btn) return;
+        const action = btn.dataset.claim ? "claim" : btn.dataset.release ? "release" : "resolve";
+        const id = btn.dataset.claim || btn.dataset.release || btn.dataset.resolve;
+        try {
+          await apiJson(`/api/feedback/${action}?id=${encodeURIComponent(id)}`, { method: "POST" });
+          await renderFeedback();
+        } catch (err) {
+          btn.parentElement?.insertAdjacentHTML("beforeend", `<div class="callout callout--amber">${esc(err.message)}</div>`);
+        }
+      });
+      renderFeedback();
     }
   }
 })();

@@ -24,9 +24,46 @@
  *
  *   POST   /api/event                        record one usage event (fire-and-forget)
  *   GET    /api/stats                        aggregate usage counts, last 30 days
+ *
+ *   GET    /api/feedback                     claimable queue, newest open first
+ *   POST   /api/feedback                     file an item { page, title, body }
+ *   GET    /api/feedback/item?id=            one item and its comments
+ *   POST   /api/feedback/claim?id=
+ *   POST   /api/feedback/release?id=
+ *   POST   /api/feedback/resolve?id=
+ *   POST   /api/feedback/reopen?id=
+ *   POST   /api/feedback/comment?id=         body: { body }
+ *
+ *   GET    /api/notes?page=                  pinned note for one hub page
+ *   PUT    /api/notes?page=                  human pins or clears it (browser only)
+ *   GET    /api/proposals?page=              agent proposals, pending first
+ *   POST   /api/proposals                    agent proposes { page, body }
+ *   POST   /api/proposals/approve?id=        human only — becomes the pinned note
+ *   POST   /api/proposals/reject?id=         human only
  */
 
 import { accessIdentity } from "../_shared/access.js";
+import { browserWrite, sameSiteWrite } from "../_shared/origin.js";
+import {
+  FEEDBACK_PREFIX,
+  PROPOSALS_PREFIX,
+  addComment,
+  approveProposal,
+  buildFeedback,
+  buildNote,
+  buildProposal,
+  claimFeedback,
+  cleanId,
+  cleanPageKey,
+  feedbackKey,
+  noteKey,
+  proposalKey,
+  rejectProposal,
+  releaseFeedback,
+  reopenFeedback,
+  resolveFeedback,
+  sortFeedback,
+} from "../_shared/collaborate.js";
 
 /** Top-level prefixes the API will touch. Anything else is rejected. */
 const AREAS = ["share", "builds", "meetings", "clips"];
@@ -181,6 +218,37 @@ export function summarizeEvents(records, windowDays) {
   };
 }
 
+async function readJson(bucket, key) {
+  const obj = await bucket.get(key);
+  if (!obj) return null;
+  return obj.json();
+}
+
+async function writeJson(bucket, key, record) {
+  await bucket.put(key, JSON.stringify(record), {
+    httpMetadata: { contentType: "application/json" },
+  });
+  return record;
+}
+
+async function listJson(bucket, prefix) {
+  const out = [];
+  let cursor;
+  do {
+    const page = await bucket.list({ prefix, cursor, limit: 1000 });
+    for (const o of page.objects) {
+      const record = await readJson(bucket, o.key);
+      if (record) out.push(record);
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor && out.length < 2000);
+  return out;
+}
+
+function refuseWrite(check) {
+  return json({ error: check.error }, 403);
+}
+
 function describe(obj) {
   const key = obj.key;
   const name = key.slice(key.lastIndexOf("/") + 1);
@@ -262,6 +330,139 @@ export async function onRequest(context) {
       return json(summarizeEvents(records, STATS_WINDOW_DAYS), 200, {
         "cache-control": "private, max-age=300",
       });
+    }
+
+    // ---- feedback queue ----------------------------------------------------
+    if (route === "feedback" && method === "GET") {
+      const pageFilter = url.searchParams.get("page");
+      const statusFilter = url.searchParams.get("status");
+      let items = await listJson(bucket, FEEDBACK_PREFIX);
+      if (pageFilter) {
+        const pageKey = cleanPageKey(pageFilter);
+        if (!pageKey) return bad("bad page");
+        items = items.filter((i) => i.page === pageKey);
+      }
+      if (statusFilter) {
+        items = items.filter((i) => i.status === statusFilter);
+      }
+      return json({ count: items.length, items: sortFeedback(items) });
+    }
+
+    if (route === "feedback" && method === "POST") {
+      const gate = sameSiteWrite(request);
+      if (!gate.ok) return refuseWrite(gate);
+      let body;
+      try { body = await request.json(); } catch { return bad("bad json"); }
+      let item;
+      try { item = buildFeedback(body, identity()); }
+      catch (err) { return bad(err.message); }
+      await writeJson(bucket, feedbackKey(item.id), item);
+      return json({ ok: true, item }, 201);
+    }
+
+    if (route === "feedback/item" && method === "GET") {
+      const id = cleanId(url.searchParams.get("id"));
+      if (!id) return bad("bad id");
+      const item = await readJson(bucket, feedbackKey(id));
+      if (!item) return bad("not found", 404);
+      return json({ item });
+    }
+
+    if (route.startsWith("feedback/") && method === "POST") {
+      const gate = sameSiteWrite(request);
+      if (!gate.ok) return refuseWrite(gate);
+      const id = cleanId(url.searchParams.get("id"));
+      if (!id) return bad("bad id");
+      const current = await readJson(bucket, feedbackKey(id));
+      if (!current) return bad("not found", 404);
+      const action = route.slice("feedback/".length);
+      let next;
+      try {
+        if (action === "claim") next = claimFeedback(current, identity());
+        else if (action === "release") next = releaseFeedback(current, identity());
+        else if (action === "resolve") next = resolveFeedback(current, identity());
+        else if (action === "reopen") next = reopenFeedback(current);
+        else if (action === "comment") {
+          let body;
+          try { body = await request.json(); } catch { return bad("bad json"); }
+          next = addComment(current, body?.body, identity());
+        } else {
+          return bad("no such route", 404);
+        }
+      } catch (err) { return bad(err.message, err.message.startsWith("already claimed") ? 409 : 400); }
+      await writeJson(bucket, feedbackKey(id), next);
+      return json({ ok: true, item: next });
+    }
+
+    // ---- pinned notes + proposals ------------------------------------------
+    if (route === "notes" && method === "GET") {
+      const pageKey = cleanPageKey(url.searchParams.get("page") || "");
+      if (!pageKey) return bad("bad page");
+      const note = await readJson(bucket, noteKey(pageKey));
+      return json({ page: pageKey, note: note || { page: pageKey, body: "", updatedBy: "", updatedAt: "" } });
+    }
+
+    if (route === "notes" && method === "PUT") {
+      const gate = browserWrite(request);
+      if (!gate.ok) return refuseWrite(gate);
+      const pageKey = cleanPageKey(url.searchParams.get("page") || "");
+      if (!pageKey) return bad("bad page");
+      let body;
+      try { body = await request.json(); } catch { return bad("bad json"); }
+      let note;
+      try { note = buildNote(pageKey, body?.body, identity()); }
+      catch (err) { return bad(err.message); }
+      await writeJson(bucket, noteKey(pageKey), note);
+      return json({ ok: true, note });
+    }
+
+    if (route === "proposals" && method === "GET") {
+      const pageFilter = url.searchParams.get("page");
+      let items = await listJson(bucket, PROPOSALS_PREFIX);
+      if (pageFilter) {
+        const pageKey = cleanPageKey(pageFilter);
+        if (!pageKey) return bad("bad page");
+        items = items.filter((p) => p.page === pageKey);
+      }
+      items.sort((a, b) => {
+        const ra = a.status === "pending" ? 0 : 1;
+        const rb = b.status === "pending" ? 0 : 1;
+        if (ra !== rb) return ra - rb;
+        return String(b.proposedAt || "").localeCompare(String(a.proposedAt || ""));
+      });
+      return json({ count: items.length, proposals: items });
+    }
+
+    if (route === "proposals" && method === "POST") {
+      const gate = sameSiteWrite(request);
+      if (!gate.ok) return refuseWrite(gate);
+      let body;
+      try { body = await request.json(); } catch { return bad("bad json"); }
+      let proposal;
+      try { proposal = buildProposal(body, identity()); }
+      catch (err) { return bad(err.message); }
+      await writeJson(bucket, proposalKey(proposal.id), proposal);
+      return json({ ok: true, proposal }, 201);
+    }
+
+    if ((route === "proposals/approve" || route === "proposals/reject") && method === "POST") {
+      const gate = browserWrite(request);
+      if (!gate.ok) return refuseWrite(gate);
+      const id = cleanId(url.searchParams.get("id"));
+      if (!id) return bad("bad id");
+      const current = await readJson(bucket, proposalKey(id));
+      if (!current) return bad("not found", 404);
+      try {
+        if (route === "proposals/approve") {
+          const { proposal, note } = approveProposal(current, identity());
+          await writeJson(bucket, proposalKey(id), proposal);
+          await writeJson(bucket, noteKey(note.page), note);
+          return json({ ok: true, proposal, note });
+        }
+        const proposal = rejectProposal(current, identity());
+        await writeJson(bucket, proposalKey(id), proposal);
+        return json({ ok: true, proposal });
+      } catch (err) { return bad(err.message); }
     }
 
     // ---- listing -----------------------------------------------------------

@@ -1561,3 +1561,96 @@ body::before {
     display: none !important;
   }
 }
+
+/* ---- pinned notes + per-page feedback ---------------------------------- */
+/* Painted by hub.js when the matching config flag is on. Same tokens as the
+   rest of the hub — no second card language. */
+.pin {
+  margin: 8px 0 20px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+}
+.pin__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pin__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.pin__meta { font-size: 12px; color: var(--text-dim); }
+.pin__body { font-size: 14px; }
+.pin__empty { color: var(--text-dim); font-size: 13px; }
+.pin__edit { margin-top: 10px; }
+.pin__edit summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.pin__edit textarea,
+.page-fb__form textarea,
+.page-fb__form input,
+.page-fb__form select,
+.page-fb__comment-form input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.pin__proposals { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.pin__proposal {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--amber-dim);
+  border-radius: 8px;
+}
+
+.page-fb { margin: 36px 0 12px; }
+.page-fb__form { margin: 14px 0 20px; }
+.page-fb__row { display: flex; flex-wrap: wrap; gap: 12px; }
+.page-fb__field { display: block; margin-bottom: 10px; font-size: 12px; color: var(--text-dim); }
+.page-fb__field--grow { flex: 1 1 240px; }
+.page-fb__list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.page-fb__item {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.page-fb__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.page-fb__meta { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+.page-fb__comments { margin: 10px 0 8px; }
+.page-fb__comment { font-size: 13px; margin: 4px 0; }
+.page-fb__who { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); margin-right: 6px; }
+.page-fb__comment-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.page-fb__comment-form input { flex: 1 1 200px; width: auto; margin-top: 0; }
+
+@media (max-width: 560px) {
+  .page-fb__row { flex-direction: column; }
+}

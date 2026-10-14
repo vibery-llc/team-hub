@@ -71,6 +71,13 @@ globalThis.HUB_CONFIG = {
       footer: "Concise pointers to the real project records · accountable to a human owner",
       feature: "activityLog",
     },
+    {
+      href: "feedback.html",
+      label: "Feedback",
+      title: "Feedback — Atlas",
+      footer: "Claimable queue · comments stay on the page they belong to",
+      feature: "feedback",
+    },
     { href: "setup.html", label: "Setup", title: "Setup — Get your agent running" },
     { href: "guide.html", label: "Guide", title: "Guide — How we work with agents" },
     { href: "resources.html", label: "Resources", title: "Resources — Working with agents 101" },
@@ -148,6 +155,20 @@ globalThis.HUB_CONFIG = {
       enabled: false,
       owner: "",
     },
+  },
+
+  /* Claimable feedback queue — page-scoped items with a comment thread.
+     Off until a human sets enabled: true. Agents may file, comment and claim
+     through MCP; they do not turn this on. */
+  feedback: {
+    enabled: true,
+  },
+
+  /* Pinned note on each page. Agents may propose an update (propose_note);
+     a human must approve it in the hub before it is pinned. Direct edits
+     are browser-only. Off until enabled: true. */
+  notes: {
+    enabled: true,
   },
 
   /* Pipeline scoreboard — at-a-glance status gauges showing PASS/WAIT/FAIL
