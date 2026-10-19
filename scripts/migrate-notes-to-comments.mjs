@@ -24,6 +24,7 @@ import { cleanPageKey, noteKey, NOTES_PREFIX } from "../functions/_shared/collab
 import {
   addCommentToThread,
   buildMigratedComment,
+  commentsConfig,
   commentsKey,
   hasLegacyRepoKey,
   preserveBody,
@@ -32,7 +33,6 @@ import {
 } from "../functions/_shared/comments.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const COMMENT_BODY_MAX = 8000;
 
 export function pinOrderFromConfig(config) {
   return (config?.nav || [])
@@ -177,8 +177,8 @@ export async function migrateNotes({
       continue;
     }
 
-    const comment = buildMigratedComment(mapped, now);
-    const byteIdentical = comment.body === mapped.body && comment.body === preserveBody(mapped.body, COMMENT_BODY_MAX);
+    const comment = buildMigratedComment(mapped, { now, config: commentsConfig({ comments: { enabled: true } }) });
+    const byteIdentical = comment.body === mapped.body && comment.body === preserveBody(mapped.body);
     const item = {
       repo_key: comment.legacy.repo_key,
       scope: comment.scope,
@@ -202,7 +202,7 @@ export async function migrateNotes({
     }
 
     if (apply) {
-      await updateThread(destBucket, comment.scope, comment.target_id, (doc) => {
+      await updateThread({ bucket: destBucket }, comment.scope, comment.target_id, (doc) => {
         if (hasLegacyRepoKey(doc, comment.legacy.repo_key)) return doc;
         return addCommentToThread(doc, comment);
       });

@@ -53,10 +53,21 @@ UI yet.
 Locked by Charlie Oct 19:
 
 - Agents and MCP callers may POST a comment. It is stored with
-  `author_kind: "agent"` and an agent name label. They cannot pin, unpin,
-  reorder or delete. There is no proposed flag: agents post directly.
-- Pin, unpin and reorder are admin-only (`comments.admins` emails).
+  `author_kind: "agent"` (when `kind !== "human"` or `via === "mcp"`) plus
+  `via` and an agent name label. They cannot pin, unpin, reorder or delete.
+  There is no proposed flag: agents post directly.
+- Pin, unpin and reorder are admin-only. Admins are `comments.admins`
+  merged with the server-side `HUB_ADMINS` env var (comma-separated emails
+  or `github:login`). This is app config only; Access is unchanged. An
+  agent must not set `HUB_ADMINS` or name `comments.admins`.
 - Delete is admin or the comment's own author, and person-only.
+- Bodies are 8000 characters; a pinned top-level comment may be 256 KiB.
+  A reply or unpinned comment over 8000 is refused with 413.
+- `rev`, `edited_by` and `proposal_id` are stored so a later note proposal
+  can target a pinned comment. Do not treat a reply as superseding a pin.
+
+The vendorable core is `functions/_shared/hub-comments/`. Do not import
+Access or `identity.js` from inside that folder.
 
 Do not treat a comments document as a place for private reasoning, secrets,
 or raw customer data. The existing notes store stays in place until a human

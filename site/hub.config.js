@@ -176,11 +176,14 @@ globalThis.HUB_CONFIG = {
      until a human sets enabled: true. Agents must not turn this on.
 
      Locked by Charlie Oct 19:
-       agents may post (stored with author_kind "agent") but cannot pin,
-       unpin, reorder or delete;
+       agents may post (stored with author_kind "agent" when kind is not
+       human or via is mcp) but cannot pin, unpin, reorder or delete;
        pin, unpin and reorder are admin-only;
        delete is admin or the comment's author, and person-only.
-     `admins` is a list of emails. */
+     `admins` is a list of emails or github:login values. The server also
+     merges HUB_ADMINS (comma-separated) from wrangler/env. That is app
+     config only; Access is unchanged. Body is 8000 characters; a pinned
+     top-level comment may be 256 KiB. */
   comments: {
     enabled: false,
     admins: [],

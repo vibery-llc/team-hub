@@ -20,14 +20,14 @@ function headers(email, extra = {}) {
   };
 }
 
-function ctx(url, { method = "GET", body, email = person, extraHeaders, bucket, config = ENABLED } = {}) {
+function ctx(url, { method = "GET", body, email = person, extraHeaders, bucket, config = ENABLED, admins } = {}) {
   return {
     request: new Request(url, {
       method,
       headers: headers(email, extraHeaders),
       body: body == null ? undefined : JSON.stringify(body),
     }),
-    env: { HUB_FILES: bucket, HUB_CONFIG: config },
+    env: { HUB_FILES: bucket, HUB_CONFIG: config, HUB_ADMINS: admins },
     params: { route: new URL(url).pathname.replace(/^\/api\//, "").split("/") },
   };
 }
@@ -63,6 +63,10 @@ test("a person can post and list; a spoofed author is ignored", async () => {
   assert.equal(comment.author, person);
   assert.equal(comment.author_kind, "person");
   assert.equal(comment.author_label, "");
+  assert.equal(comment.via, "browser");
+  assert.equal(comment.rev, "1");
+  assert.equal(comment.edited_by, null);
+  assert.equal(comment.proposal_id, null);
   assert.equal(comment.body, "Welcome home");
   assert.equal(comment.scope, "home");
   assert.equal(comment.target_id, "home");
@@ -88,6 +92,7 @@ test("an agent may post with a bot label and cannot pin, unpin, reorder or delet
   const { comment } = await created.json();
   assert.equal(comment.author_kind, "agent");
   assert.equal(comment.author_label, "Codex");
+  assert.equal(comment.via, "mcp");
   assert.equal(comment.author, person);
 
   for (const path of [`pin`, `unpin`, `reorder`]) {
@@ -171,7 +176,10 @@ test("author-only edit; replies cannot nest", async () => {
     body: { body: "edited" },
   });
   assert.equal(edited.status, 200);
-  assert.equal((await edited.json()).comment.body, "edited");
+  const afterEdit = await edited.json();
+  assert.equal(afterEdit.comment.body, "edited");
+  assert.equal(afterEdit.comment.rev, "2");
+  assert.equal(afterEdit.comment.edited_by, person);
 
   const reply = await create(bucket, { parent_id: comment.id, body: "a reply" });
   assert.equal(reply.status, 201);
@@ -280,7 +288,50 @@ test("optional quote is stored as plain text and returned, never as HTML", async
   assert.equal((await long.json()).comment.quote.length, 500);
 });
 
-test("the generic file API refuses the comments/ prefix", async () => {
+test("an unpinned body over 8000 chars is 413; a pinned top-level long body is accepted", async () => {
+  const bucket = memoryBucket();
+  const tooLong = await create(bucket, { body: "y".repeat(8001) });
+  assert.equal(tooLong.status, 413);
+
+  const replyOver = await create(bucket, { body: "ok" });
+  const parent = (await replyOver.json()).comment;
+  const nested = await create(bucket, { parent_id: parent.id, body: "z".repeat(8001) });
+  assert.equal(nested.status, 413);
+
+  const personPin = await create(bucket, { body: "y".repeat(8001), pinned: true });
+  assert.equal(personPin.status, 403);
+
+  const pinned = await create(bucket, { body: "y".repeat(8001), pinned: true }, { email: admin });
+  assert.equal(pinned.status, 201);
+  const stored = await pinned.json();
+  assert.equal(stored.comment.body.length, 8001);
+  assert.equal(stored.comment.pinned, true);
+});
+
+test("HUB_ADMINS is merged into comments.admins so an env admin can pin", async () => {
+  const bucket = memoryBucket();
+  const created = await create(bucket, {}, { config: { comments: { enabled: true, admins: [] } } });
+  const { comment } = await created.json();
+  const refused = await api(bucket, `https://hub.example/api/comments/${comment.id}/pin`, {
+    method: "POST",
+    email: "ops@example.com",
+    extraHeaders: { origin: "https://hub.example" },
+    config: { comments: { enabled: true, admins: [] } },
+  });
+  assert.equal(refused.status, 403);
+
+  const allowed = await api(bucket, `https://hub.example/api/comments/${comment.id}/pin`, {
+    method: "POST",
+    email: "ops@example.com",
+    extraHeaders: { origin: "https://hub.example" },
+    config: { comments: { enabled: true, admins: [] } },
+    admins: "ops@example.com, github:charlie",
+  });
+  assert.equal(allowed.status, 200);
+  assert.equal((await allowed.json()).comment.pinned, true);
+});
+
+test("the file API refuses the comments/ prefix", async () => {
   const bucket = memoryBucket();
   const upload = await api(bucket, "https://hub.example/api/files?key=comments/home/home.json", {
     method: "POST",
