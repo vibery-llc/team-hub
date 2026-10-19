@@ -31,7 +31,7 @@ what lets a deployment pull upstream changes without conflicts, and it is easy
 to check:
 
 ```bash
-grep -rniE 'your-org|your-repo' site/hub.js site/index.html site/meetings.html site/files.html
+grep -rniE 'your-org|your-repo' site/hub.js site/index.html site/meetings.html site/files.html site/feedback.html
 ```
 
 ## Things that will bite you

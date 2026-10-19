@@ -22,6 +22,12 @@ jobs:
       CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Pushes the refreshed data back to main. If main is protected by a ruleset
+          # that requires pull requests, set DATA_PUSH_TOKEN to a token (contents:
+          # write) from an account on the ruleset's bypass list. Without it the
+          # default token is used, which only works while main is unprotected.
+          token: ${{ secrets.DATA_PUSH_TOKEN || github.token }}
 
       - uses: actions/setup-node@v4
         with:
@@ -35,7 +41,11 @@ jobs:
         run: node scripts/fetch-data.mjs
 
       - name: Commit refreshed data (scheduled runs only)
+        id: commit
         if: github.event_name != 'push'
+        # A refused push (protected main) must not stop the deploy below: the site
+        # is built from this working tree, which already has the fresh data.
+        continue-on-error: true
         run: |
           git add site/data.json
           [ -f site/history.json ] && git add site/history.json
@@ -45,6 +55,10 @@ jobs:
             git commit -m "data: scheduled refresh"
             git push
           fi
+
+      - name: Warn that refreshed data was not saved
+        if: steps.commit.outcome == 'failure'
+        run: echo "::warning title=Refreshed data not saved::The push to main was refused, so data.json and history.json were deployed but not committed and the daily history did not grow. If main is protected, set the DATA_PUSH_TOKEN secret (see README, Quick start)."
 
       - name: Deploy to Cloudflare Pages
         if: env.CF_TOKEN != ''

@@ -26,6 +26,9 @@ That is usually five SaaS subscriptions and a Slack channel. This is one repo.
 | **Meetings** | Summary, decisions, action items with contextual buttons, publishable clips, and a searchable transcript with visible redaction markers |
 | **Files & builds** | Drag-and-drop upload to R2, chunked so a multi-gigabyte build works, per-platform "download latest", image and video previews |
 | **Activity (optional)** | Human-owned, agent-friendly workstream updates that stay concise and point to the true project records; absent until a human opts in |
+| **Feedback (optional)** | A claimable queue of page-scoped items with a comment thread; absent from the nav until a human opts in |
+| **Pinned notes (optional)** | A note on each page. Agents may propose an update; a human must approve it before it is pinned |
+| **Comments (optional, no UI yet)** | Unified threads on a page, a service, or home. A comment can be pinned. Off until a human sets `comments.enabled` |
 | **Setup / Guide / Resources** | Onboarding pages your team owns. Setup is a real agent-install walkthrough; the other two ship as examples to replace |
 | **MCP server** | The hub itself is an MCP server, so an agent in your repo can read meetings, action items and the ticket queue instead of a human relaying them |
 
@@ -135,6 +138,8 @@ infrastructure.
 
 Then push to `main`. The workflow refreshes data and deploys.
 
+The scheduled run also commits the refreshed `data.json` and `history.json` back to `main`. If `main` is protected by a ruleset that requires pull requests, that push is refused and the daily history stops growing, although the site still deploys with fresh data and the run shows a warning. To keep the history, add a secret named `DATA_PUSH_TOKEN`: a token with Contents write access, from an account that is on the ruleset's bypass list. It is separate from `GH_PAT`, which stays read-only.
+
 > **Do the Access step before you put anything real in it.** Until that
 > application exists, your hub is publicly readable. `init.mjs` says so too.
 
@@ -144,7 +149,8 @@ Two things:
 
 - **`site/hub.config.js`** — one commented file. Org, site name, nav, repo,
   tracker, phase plan, dashboard links, agent prompt templates, the optional
-  Unity `game` block, and the optional activity-log opt-in.
+  Unity `game` block, the optional activity-log opt-in, and the optional
+  feedback-queue, pinned-notes and comments flags.
 - **`site/brand/`** — `mark.png` plus `mark-32.png` and `mark-64.png`.
 
 That is the whole of "who this hub belongs to". Everything else is generic.
@@ -232,15 +238,18 @@ site/                 what deploys — plain files, no build
   _headers            cache rules
   data.json           written by scripts/fetch-data.mjs
   activity.json       optional, human-owned workstream pointers
+  feedback.html       optional claimable queue (opt-in via hub.config.js)
   meetings/           one JSON per meeting + transcripts
 functions/            Pages Functions — AT THE PROJECT ROOT, see below
-  api/                R2 file store: list, upload, chunked multipart, download
+  api/                R2 file store, usage, feedback, notes, proposals, comments
+  _shared/hub-comments/  vendorable comments core (no Access or identity imports)
   mcp/                MCP server over Streamable HTTP
 scripts/
   init.mjs            first-run setup
   fetch-data.mjs      refresh data.json from GitHub + the tracker
   add-activity.mjs    append a validated update after human opt-in
   publish-build.mjs   upload a locally-built artifact to builds/<platform>/
+  migrate-notes-to-comments.mjs  dry-run mapper from notes/pages onto comments/
 ```
 
 **`functions/` is at the project root on purpose.** With
@@ -315,7 +324,9 @@ or prints it.
 `functions/mcp/` serves a Model Context Protocol server over Streamable HTTP:
 `list_meetings`, `get_meeting`, `search_transcript`, `list_action_items`,
 `list_agent_ready_tickets`, `list_files`, `latest_build`, `upload_file`,
-`start_large_upload`.
+`start_large_upload`, `list_feedback`, `get_feedback`, `create_feedback`,
+`comment_on_feedback`, `claim_feedback`, `list_notes`, `propose_note`,
+`list_note_proposals`.
 
 Hand-rolled JSON-RPC rather than the MCP SDK, because this repo has no build
 step and a dependency would mean adding `package.json` plus an npm install for
@@ -441,6 +452,131 @@ usageStats: {
 Usage events accumulate in R2 like anything else the API writes — small JSON
 objects, cheap on the free tier — and nothing prunes them automatically today.
 
+## Feedback queue and pinned notes
+
+Two optional collaborative surfaces, both off until a human sets the flag in
+`site/hub.config.js`. They live in R2 (not in git), behind the same Access
+gate as the file store.
+
+```js
+feedback: { enabled: true },
+notes: { enabled: true },
+comments: { enabled: false, admins: [] },
+```
+
+**Feedback.** A claimable queue of items scoped to a hub page (`index`,
+`meetings`, …). Each item has a comment thread. The Feedback page is the
+whole queue; every other page grows a "Feedback on this page" panel when
+the flag is on. Statuses are `open`, `claimed` and `done`. Claiming is
+exclusive — a second claimant gets `409`. Agents may file, comment and
+claim through MCP.
+
+**Pinned notes.** One note per page. A human can edit it in the hub. An
+agent may only *propose* an update (`propose_note`). Approve and reject are
+browser-only: a headerless POST (MCP, curl) is refused, even with a valid
+Access JWT. Approving writes the proposal body onto the pinned note.
+
+**Cross-site writes are refused.** Mutating requests to the feedback, notes
+and proposals routes, and MCP tools that write those stores, are refused
+when `Origin`, `Referer` or `Sec-Fetch-Site` names a different host. A
+signed-in person who also has another site open cannot be made to pin a
+note or file feedback from that other origin. Read tools and headerless
+same-site callers (MCP, `cloudflared access curl`) still work.
+
+**Unified comments** sit behind `comments.enabled` (off by default) and have
+no UI yet. One JSON document per `{scope, target_id}` lives at
+`comments/{scope}/{target_id}.json`. Writes are etag-conditional with a
+bounded retry. The file API refuses the `comments/` prefix.
+
+The store and policy live in `functions/_shared/hub-comments/`, a vendorable
+folder with no imports outside itself. Routes and identity glue stay in
+`functions/api/` and `functions/_shared/comments.js`. Callers inject
+`{ bucket, identity: { id, email, kind, via, idp }, config: { admins, adminIdps, limits }, now }`.
+The same core is meant to land in compass-city-hub and kf-hub.
+
+Locked by Charlie Oct 19: agents may POST a comment (stored with
+`author_kind: "agent"`) but cannot pin, unpin, reorder or delete; pin/unpin/
+reorder are admin-only; delete is admin or the author, and person-only.
+`author_kind` is `"agent"` when `identity.kind !== "human"` or `via === "mcp"`.
+The stored comment keeps `via`. The API refuses pin, unpin, reorder and
+delete for `via=mcp` or a non-human kind.
+
+**Who is an admin** (Charlie, Oct 19: developers are admins by default and
+may whitelist non-developers):
+
+```
+isAdmin = signedInViaGitHub || HUB_ADMINS.includes(email)
+```
+
+- Anyone who signs in to Access through the **GitHub** identity provider is
+  a hub admin.
+- `HUB_ADMINS` (server-side env var, comma-separated emails, merged with
+  `comments.admins` in `hub.config.js`) is the allowlist of extra admins
+  who sign in another way (Google Workspace, email one-time code). Matching
+  is case-insensitive. `github:login` entries are ignored.
+- Everyone else is a normal user: they can comment and edit or delete their
+  own comments, but cannot pin, unpin, reorder, delete other people's
+  comments, or edit (approve edits to) someone else's pinned comment.
+- Agents and MCP callers stay bot-labeled add/list only, whatever provider
+  their person signed in with: admin rights need a same-site human browser.
+
+The Access JWT does not say which identity provider was used, so the
+Functions ask Access: `GET /cdn-cgi/access/get-identity` on the hub's own
+host, with the `CF_Authorization` cookie (or the `Cf-Access-Jwt-Assertion`
+token), and read `idp.type === "github"` (`accessIdp()` in
+`functions/_shared/access.js`). It runs only on comments routes, only when
+the flag is on and Access is configured (`ACCESS_TEAM_DOMAIN` and
+`ACCESS_AUD`), and only after the JWT has been verified. It **fails
+closed**: a lookup that errors, times out, is not JSON, has no `idp`, or
+names a different email than the verified JWT counts as "not GitHub", so
+the person is an admin only if `HUB_ADMINS` lists them. Without Access
+configured (`wrangler pages dev`) nobody is a GitHub admin.
+
+This is app config only; Cloudflare Access policies are unchanged. Keep the
+`wrangler.toml` entry a placeholder in this repo and set the real value per
+deployment.
+
+Bodies are 8000 characters by default. A pinned top-level comment may be up
+to 256 KiB so a long service note can migrate losslessly. Editing at that
+size needs a human browser caller who is an admin or the author; any
+other caller, including an admin via MCP, stays at 8000 and gets `413`
+above that. A reply or unpinned comment over 8000 gets `413`. Unpinning
+a body over 8000 is `409` until the body is trimmed. Each comment has
+`rev` (a per-comment revision string, `"1"` on create, seeded from the
+legacy etag on migration, bumped on a body edit), `edited_by` and
+`proposal_id` (nullable) so a later note proposal can target a pinned
+comment without a reply marking it superseded.
+
+A pinned comment's body is edited directly only by an admin or its author.
+Everyone else must propose. Approve is a later slice; the API refuses the
+direct edit and `can_edit` matches.
+
+Access (`access.js`) only returns email. A service-token JWT has no
+email; its stable id is `common_name`. The comments glue reads that
+claim only when Access is configured (`ACCESS_TEAM_DOMAIN` and
+`ACCESS_AUD` both set). Otherwise the JWT was never verified and
+`common_name` is ignored.
+
+List and pins responses include `author_kind`, `author_label`, `via`,
+`rev`, `edited_by`, `proposal_id`, an optional plain-text `quote` (max 500),
+and per-viewer `can_edit` / `can_delete` / `can_pin` plus
+`viewer: { can_pin, is_admin }` so a UI can hide menu items. The server
+still enforces the same rules.
+
+To preview mapping today's page notes onto that store:
+
+```bash
+node scripts/migrate-notes-to-comments.mjs --source-dir=./r2-dump
+```
+
+Dry-run is the default. `--apply` writes comment documents only. It never
+writes or deletes `notes/` keys. A later compass-city-hub adapter
+(`notes/*.md`, `service-YYYY-MM-DD.md` becoming `scope=service`) is stubbed
+in the same script.
+
+Agents must not turn these flags on, and must not treat a pending proposal
+as published. See `AGENTS.md`.
+
 ## Publishing a meeting
 
 1. Transcribe locally — audio never leaves the machine:
@@ -499,8 +635,9 @@ only in files upstream does not compete for:
 | `guide.html`, `resources.html` | ships example prose |
 
 Everything else — `hub.js`, `style.css`, `index.html`, `meetings.html`,
-`files.html`, `activity.html`, `setup.html`, `functions/`, `scripts/` — should
-be **byte-identical to upstream**, and those merges fast-forward cleanly.
+`files.html`, `activity.html`, `feedback.html`, `setup.html`, `functions/`,
+`scripts/` — should be **byte-identical to upstream**, and those merges
+fast-forward cleanly.
 
 ### The conflict is the feature
 
@@ -521,7 +658,7 @@ To see how far you have drifted before merging:
 ```bash
 git fetch upstream
 git diff upstream/main --stat -- site/hub.js site/style.css site/index.html \
-  site/meetings.html site/files.html functions/ scripts/
+  site/meetings.html site/files.html site/feedback.html functions/ scripts/
 ```
 
 Empty output means zero drift. Anything listed is a local edit to product code

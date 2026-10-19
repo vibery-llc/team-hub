@@ -33,3 +33,51 @@ what, and turning it on is a tenant policy decision, not an agent's to make.
 An agent must not set `usageStats.attribution.enabled` to `true` or name its
 `owner` in `site/hub.config.js`. Only make that change after a human
 explicitly asks for per-person attribution to be turned on.
+
+## Feedback and pinned notes
+
+`feedback.enabled` and `notes.enabled` are tenant opt-ins. An agent must not
+turn them on.
+
+Agents may file feedback, comment, and claim an open item. They may propose
+a pinned-note update (`propose_note`). They must not pin a note, approve or
+reject a proposal, or treat a pending proposal as the published note. Those
+actions stay with a human in the hub.
+
+## Unified comments
+
+`comments.enabled` is a tenant opt-in. An agent must not turn it on or name
+`comments.admins`. The API is 404 while the flag is off. There is no comments
+UI yet.
+
+Locked by Charlie Oct 19:
+
+- Agents and MCP callers may POST a comment. It is stored with
+  `author_kind: "agent"` (when `kind !== "human"` or `via === "mcp"`) plus
+  `via` and an agent name label. They cannot pin, unpin, reorder or delete.
+  There is no proposed flag: agents post directly.
+- Pin, unpin and reorder are admin-only. Admin model (Charlie, Oct 19):
+  `isAdmin = signedInViaGitHub || HUB_ADMINS.includes(email)`. Anyone who
+  signs in to Access through GitHub is an admin. `HUB_ADMINS` (server-side
+  env var, comma-separated emails, merged with `comments.admins`) is the
+  allowlist for extra non-developer admins (Google, email-code logins). The
+  provider comes from Access's `/cdn-cgi/access/get-identity`; if it can't be
+  determined the person is not a GitHub admin (fail closed). This is app
+  config only; Access is unchanged.
+  An agent must not set `HUB_ADMINS` or name `comments.admins`. Do not
+  commit real emails; use the placeholder in `wrangler.toml`.
+- Delete is admin or the comment's own author, and person-only.
+- A pinned comment's body is edited directly only by an admin or its
+  author. Everyone else must propose. Approve is a later slice; this PR
+  refuses the direct edit and sets `can_edit` to match.
+- Bodies are 8000 characters; a pinned top-level comment may be 256 KiB.
+  A reply or unpinned comment over 8000 is refused with 413.
+- `rev`, `edited_by` and `proposal_id` are stored so a later note proposal
+  can target a pinned comment. Do not treat a reply as superseding a pin.
+
+The vendorable core is `functions/_shared/hub-comments/`. Do not import
+Access or `identity.js` from inside that folder.
+
+Do not treat a comments document as a place for private reasoning, secrets,
+or raw customer data. The existing notes store stays in place until a human
+runs `scripts/migrate-notes-to-comments.mjs --apply` and chooses a cutover.

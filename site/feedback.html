@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Feedback</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="32x32" href="brand/mark-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="brand/mark-64.png">
+<link rel="stylesheet" href="style.css">
+<script src="hub.config.js"></script>
+<script defer src="hub.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+<header class="site" data-hub-shell></header>
+
+<main>
+  <div id="feedback-off">
+    <p class="meta">Optional capability · queue not loaded</p>
+    <h1>The feedback queue is off</h1>
+    <p class="lead">Turn it on in <code>site/hub.config.js</code> when the team wants a claimable list of page-scoped comments.</p>
+    <div class="callout callout--water"><strong>Set <code>feedback.enabled</code> to <code>true</code>.</strong> Until then the page stays out of the navigation and the API still refuses nothing — the queue is simply unused.</div>
+  </div>
+
+  <div id="feedback-on" hidden>
+    <p class="meta" id="feedback-meta">Claimable queue · comments stay on the page they belong to</p>
+    <h1>Feedback</h1>
+    <p class="lead">One queue for the hub. File an item against a page, claim it if you are working it, comment in the thread. Agents can file, comment and claim through MCP; they cannot pin a note from here.</p>
+
+    <form class="page-fb__form" id="file-form">
+      <div class="page-fb__row">
+        <label class="page-fb__field">
+          <span>Page</span>
+          <select name="page" id="file-page"></select>
+        </label>
+        <label class="page-fb__field page-fb__field--grow">
+          <span>Title</span>
+          <input name="title" maxlength="160" required placeholder="One-line title">
+        </label>
+      </div>
+      <label class="page-fb__field">
+        <span>What should change</span>
+        <textarea name="body" rows="3" maxlength="4000" required placeholder="What you saw, and what should happen instead."></textarea>
+      </label>
+      <div class="btn-row"><button type="submit" class="btn">File feedback</button></div>
+    </form>
+
+    <div class="toolbar" id="filters">
+      <button type="button" class="btn btn--sm btn--pill is-on" data-status="">all</button>
+      <button type="button" class="btn btn--sm btn--pill" data-status="open">open</button>
+      <button type="button" class="btn btn--sm btn--pill" data-status="claimed">claimed</button>
+      <button type="button" class="btn btn--sm btn--pill" data-status="done">done</button>
+    </div>
+    <p class="empty" id="feedback-empty" hidden>Nothing in this filter.</p>
+    <ul class="page-fb__list" id="feedback-list"></ul>
+  </div>
+</main>
+
+<footer class="site" data-hub-shell></footer>
+
+</div>
+<script>
+const CONFIG = globalThis.HUB_CONFIG || {};
+const active = CONFIG.feedback?.enabled === true;
+const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtWhen = (iso) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.valueOf())) return "";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(d);
+};
+const apiJson = (path, opts) =>
+  fetch(path, { cache: "no-store", ...opts }).then(async (r) => {
+    const text = await r.text();
+    let body;
+    try { body = JSON.parse(text); }
+    catch { throw new Error("the hub API is not running — use npx wrangler pages dev"); }
+    if (!r.ok) throw new Error(body.error || `${r.status}`);
+    return body;
+  });
+
+if (active) {
+  document.getElementById("feedback-off").hidden = true;
+  document.getElementById("feedback-on").hidden = false;
+
+  const pages = (CONFIG.nav || []).map((n) => String(n.href || "").replace(/\.html$/, "")).filter(Boolean);
+  const pageSelect = document.getElementById("file-page");
+  pageSelect.innerHTML = pages.map((p) => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+
+  let status = "";
+  const filters = document.getElementById("filters");
+  filters.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-status]");
+    if (!btn) return;
+    status = btn.dataset.status;
+    for (const b of filters.querySelectorAll("[data-status]")) b.classList.toggle("is-on", b === btn);
+    load();
+  });
+
+  document.getElementById("file-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    try {
+      await apiJson("/api/feedback", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          page: ev.target.page.value,
+          title: ev.target.title.value,
+          body: ev.target.body.value,
+        }),
+      });
+      ev.target.reset();
+      await load();
+    } catch (err) {
+      ev.target.insertAdjacentHTML("afterend", `<div class="callout callout--amber">${esc(err.message)}</div>`);
+    }
+  });
+
+  const list = document.getElementById("feedback-list");
+  list.addEventListener("submit", async (ev) => {
+    const form = ev.target.closest("[data-comment]");
+    if (!form) return;
+    ev.preventDefault();
+    try {
+      await apiJson(`/api/feedback/comment?id=${encodeURIComponent(form.dataset.comment)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body: form.body.value }),
+      });
+      await load();
+    } catch (err) {
+      form.insertAdjacentHTML("afterend", `<div class="callout callout--amber">${esc(err.message)}</div>`);
+    }
+  });
+  list.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("[data-claim], [data-release], [data-resolve], [data-reopen]");
+    if (!btn) return;
+    const action = btn.dataset.claim ? "claim" : btn.dataset.release ? "release" : btn.dataset.resolve ? "resolve" : "reopen";
+    const id = btn.dataset.claim || btn.dataset.release || btn.dataset.resolve || btn.dataset.reopen;
+    try {
+      await apiJson(`/api/feedback/${action}?id=${encodeURIComponent(id)}`, { method: "POST" });
+      await load();
+    } catch (err) {
+      btn.parentElement?.insertAdjacentHTML("beforeend", `<div class="callout callout--amber">${esc(err.message)}</div>`);
+    }
+  });
+
+  async function load() {
+    const empty = document.getElementById("feedback-empty");
+    try {
+      const q = status ? `?status=${encodeURIComponent(status)}` : "";
+      const data = await apiJson(`/api/feedback${q}`);
+      const items = data.items || [];
+      empty.hidden = items.length > 0;
+      document.getElementById("feedback-meta").textContent =
+        `${data.count} item${data.count === 1 ? "" : "s"} · comments stay on the page they belong to`;
+      list.innerHTML = items.map((item) => `
+        <li class="page-fb__item">
+          <div class="page-fb__top">
+            <strong>${esc(item.title)}</strong>
+            <span class="chip chip--${item.status === "done" ? "done" : item.status === "claimed" ? "progress" : "todo"}">${esc(item.status)}</span>
+          </div>
+          <p class="page-fb__meta"><a href="${esc(item.page)}.html">${esc(item.page)}</a> · ${esc(item.createdBy || "unknown")} · ${esc(fmtWhen(item.createdAt))}${
+            item.claimedBy ? ` · claimed by ${esc(item.claimedBy)}` : ""
+          }</p>
+          <p>${esc(item.body)}</p>
+          <div class="page-fb__comments">${(item.comments || []).map((c) =>
+            `<p class="page-fb__comment"><span class="page-fb__who">${esc(c.author)}</span> ${esc(c.body)}</p>`
+          ).join("")}</div>
+          <form class="page-fb__comment-form" data-comment="${esc(item.id)}">
+            <input name="body" maxlength="2000" required placeholder="Add a comment">
+            <button type="submit" class="btn btn--sm">Comment</button>
+          </form>
+          <div class="btn-row">
+            ${item.status === "open" ? `<button type="button" class="btn btn--sm" data-claim="${esc(item.id)}">Claim</button>` : ""}
+            ${item.status === "claimed" ? `<button type="button" class="btn btn--sm" data-release="${esc(item.id)}">Release</button>` : ""}
+            ${item.status !== "done" ? `<button type="button" class="btn btn--sm btn--ok" data-resolve="${esc(item.id)}">Resolve</button>` : `<button type="button" class="btn btn--sm" data-reopen="${esc(item.id)}">Reopen</button>`}
+          </div>
+        </li>`).join("");
+    } catch (err) {
+      empty.hidden = true;
+      list.innerHTML = `<li><div class="callout callout--amber"><strong>Queue could not be loaded.</strong> ${esc(err.message)} Run <code>npx wrangler pages dev</code> for the Functions.</div></li>`;
+    }
+  }
+  load();
+}
+</script>
+</body>
+</html>

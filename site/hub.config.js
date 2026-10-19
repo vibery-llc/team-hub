@@ -72,6 +72,13 @@ globalThis.HUB_CONFIG = {
       footer: "Concise pointers to the real project records · accountable to a human owner",
       feature: "activityLog",
     },
+    {
+      href: "feedback.html",
+      label: "Feedback",
+      title: "Feedback — Atlas",
+      footer: "Claimable queue · comments stay on the page they belong to",
+      feature: "feedback",
+    },
     { href: "start.html", label: "Get set up", feature: "onboarding" },
     { href: "setup.html", label: "Setup reference", title: "Setup — Get your agent running" },
     { href: "guide.html", label: "Guide", title: "Guide — How we work with agents" },
@@ -324,6 +331,42 @@ globalThis.HUB_CONFIG = {
       enabled: false,
       owner: "",
     },
+  },
+
+  /* Claimable feedback queue — page-scoped items with a comment thread.
+     Off until a human sets enabled: true. Agents may file, comment and claim
+     through MCP; they do not turn this on. */
+  feedback: {
+    enabled: true,
+  },
+
+  /* Pinned note on each page. Agents may propose an update (propose_note);
+     a human must approve it in the hub before it is pinned. Direct edits
+     are browser-only. Off until enabled: true. */
+  notes: {
+    enabled: true,
+  },
+
+  /* Unified comments on a page, a service, or the home thread. A comment
+     can be pinned (for example a Welcome home note on the homepage). Off
+     until a human sets enabled: true. Agents must not turn this on.
+
+     Locked by Charlie Oct 19:
+       agents may post (stored with author_kind "agent" when kind is not
+       human or via is mcp) but cannot pin, unpin, reorder or delete;
+       pin, unpin and reorder are admin-only;
+       delete is admin or the comment's author, and person-only.
+     Admins (Oct 19): anyone who signs in through GitHub, plus the emails
+     in `admins` merged with HUB_ADMINS (comma-separated) from wrangler/env,
+     the allowlist for non-developers who sign in through Google or an
+     email code. The provider is read from Access (get-identity); unknown
+     means not a GitHub admin.
+     That is app config only; Access is unchanged. Body is 8000
+     characters; a pinned top-level comment may be 256 KiB, but only a
+     human browser admin or author may use that budget on edit. */
+  comments: {
+    enabled: false,
+    admins: [],
   },
 
   /* Pipeline scoreboard — at-a-glance status gauges showing PASS/WAIT/FAIL
