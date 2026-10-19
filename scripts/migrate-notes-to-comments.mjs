@@ -18,7 +18,7 @@
 
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { cleanPageKey, noteKey, NOTES_PREFIX } from "../functions/_shared/collaborate.js";
 import {
@@ -32,15 +32,13 @@ import {
   updateThread,
 } from "../functions/_shared/comments.js";
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-
 export function pinOrderFromConfig(config) {
   return (config?.nav || [])
     .map((item) => cleanPageKey(item?.href || item?.page || ""))
     .filter(Boolean);
 }
 
-export function teamHubNotesAdapter({ pinOrder: _pinOrder = [] } = {}) {
+export function teamHubNotesAdapter() {
   return {
     name: "team-hub-notes",
     async listNotes(source) {
@@ -129,9 +127,9 @@ export function compassCityHubAdapter() {
   };
 }
 
-export function getAdapter(name, options) {
+export function getAdapter(name) {
   if (name === "compass-city-hub") return compassCityHubAdapter();
-  return teamHubNotesAdapter(options);
+  return teamHubNotesAdapter();
 }
 
 export async function migrateNotes({
@@ -315,11 +313,6 @@ Adapters: team-hub-notes (default), compass-city-hub
   --report=<file>   write the JSON report (default: stdout only)`;
 }
 
-async function loadConfig() {
-  await import(pathToFileURL(join(ROOT, "site", "hub.config.js")).href);
-  return globalThis.HUB_CONFIG || {};
-}
-
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -327,8 +320,7 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
   if (!args.sourceDir) throw new Error("source-dir is required (a directory of R2 keys, e.g. notes/pages/index.json)");
-  const config = await loadConfig();
-  const adapter = getAdapter(args.adapter, { pinOrder: pinOrderFromConfig(config) });
+  const adapter = getAdapter(args.adapter);
   const source = fsBucket(args.sourceDir);
   const dest = fsBucket(args.destDir || args.sourceDir);
   const report = await migrateNotes({ adapter, source, dest, apply: args.apply });

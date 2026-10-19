@@ -183,7 +183,8 @@ globalThis.HUB_CONFIG = {
      `admins` is a list of emails (hub owner only to start). The server
      also merges HUB_ADMINS (comma-separated emails) from wrangler/env.
      That is app config only; Access is unchanged. Body is 8000
-     characters; a pinned top-level comment may be 256 KiB. */
+     characters; a pinned top-level comment may be 256 KiB, but only a
+     human browser admin or author may use that budget on edit. */
   comments: {
     enabled: false,
     admins: [],

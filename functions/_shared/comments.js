@@ -102,9 +102,17 @@ function jwtPayload(token) {
 /**
  * Access (access.js) only returns email. A service token JWT has no
  * email; its stable id is common_name. We read that claim here without
- * changing Access. When Access is configured the JWT was already verified.
+ * changing Access.
+ *
+ * common_name is read only when Access is configured: both
+ * ACCESS_TEAM_DOMAIN and ACCESS_AUD are set. Otherwise the JWT was
+ * never verified and the claim is ignored. When Access is configured,
+ * accessIdentity has already verified the JWT.
  */
-export function accessClientId(request) {
+export function accessClientId(request, env) {
+  const teamDomain = String(env?.ACCESS_TEAM_DOMAIN || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const aud = String(env?.ACCESS_AUD || "");
+  if (!teamDomain || !aud) return "";
   const payload = jwtPayload(request?.headers?.get?.("Cf-Access-Jwt-Assertion"));
   return String(payload.common_name || "").trim();
 }
@@ -113,11 +121,13 @@ export function accessClientId(request) {
  * Map a request onto the injected identity bag the core expects.
  * Browser same-site => kind human, via browser. Anything else (MCP, curl)
  * => via mcp. No email and no service-token id => empty id (writes 403).
+ * extra.env is the Functions env; common_name is ignored unless Access
+ * is configured there (see accessClientId).
  */
 export function commentsIdentity(request, email, extra = {}) {
   const browser = browserWrite(request).ok;
   const actorEmail = usableActor(email);
-  const clientId = usableActor(extra.id || extra.clientId || accessClientId(request));
+  const clientId = usableActor(extra.id || extra.clientId || accessClientId(request, extra.env));
   let id = "";
   if (actorEmail) id = actorEmail;
   else if (clientId) id = serviceAuthor(clientId);

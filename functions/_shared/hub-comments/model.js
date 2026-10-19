@@ -13,10 +13,9 @@ import {
   bumpRev,
   seedRev,
   hasWriteIdentity,
-  isHumanAuthor,
   usableActor,
 } from "./util.js";
-import { capabilitiesFor, isAdmin } from "./policy.js";
+import { allowPinnedBodyBudget, capabilitiesFor } from "./policy.js";
 
 export function emptyThread() {
   return { comments: [] };
@@ -176,7 +175,7 @@ export function editCommentInThread(doc, id, body, { identity, config, now = new
     if (comment.deleted_at) throw new Error("deleted comments cannot be edited");
     const prepared = cleanBody(body, Number.MAX_SAFE_INTEGER);
     if (!prepared) throw new Error("body is required");
-    const allowPinnedBudget = isAdmin(identity, config) || isHumanAuthor(identity);
+    const allowPinnedBudget = allowPinnedBodyBudget(identity, comment, config);
     assertBodySize(prepared, {
       pinned: comment.pinned,
       parent_id: comment.parent_id,

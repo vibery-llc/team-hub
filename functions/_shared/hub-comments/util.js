@@ -148,7 +148,7 @@ export function isSystemComment(comment) {
   return comment?.author_kind === "system" || String(comment?.author || "").trim().toLowerCase() === "legacy";
 }
 
-/** Human, non-MCP callers may use the pinned 256 KiB budget on edit. */
+/** Human browser caller (kind human, via not mcp). */
 export function isHumanAuthor(identity) {
   return Boolean(identity && identity.kind === "human" && identity.via !== "mcp");
 }

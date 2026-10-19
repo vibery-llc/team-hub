@@ -528,11 +528,12 @@ export async function onRequest(context) {
     if (route === "comments" || route === "comments/pins" || route.startsWith("comments/")) {
       const settings = await loadCommentsSettings(env, request);
       if (!settings.enabled) return bad("not found", 404);
+      const clientId = accessClientId(request, env);
 
       if (route === "comments" && method === "GET") {
         const loc = threadQuery(url);
         if (loc.error) return bad(loc.error);
-        const viewer = commentsIdentity(request, access.email, { clientId: accessClientId(request) });
+        const viewer = commentsIdentity(request, access.email, { clientId });
         const { doc } = await readThread(bucket, loc.scope, loc.targetId);
         return json({
           scope: loc.scope,
@@ -545,7 +546,7 @@ export async function onRequest(context) {
       if (route === "comments/pins" && method === "GET") {
         const loc = threadQuery(url);
         if (loc.error) return bad(loc.error);
-        const viewer = commentsIdentity(request, access.email, { clientId: accessClientId(request) });
+        const viewer = commentsIdentity(request, access.email, { clientId });
         const { doc } = await readThread(bucket, loc.scope, loc.targetId);
         return json({
           scope: loc.scope,
@@ -561,7 +562,7 @@ export async function onRequest(context) {
         let body;
         try { body = await request.json(); } catch { return bad("bad json"); }
         const viewer = commentsIdentity(request, access.email, {
-          clientId: accessClientId(request),
+          clientId,
           agentName: body.agent_name || body.agent || request.headers.get("x-hub-agent") || "",
         });
         const allowed = commentPolicy("create", { identity: viewer, config: settings });
@@ -598,7 +599,7 @@ export async function onRequest(context) {
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
         const viewer = commentsIdentity(request, access.email, {
-          clientId: accessClientId(request),
+          clientId,
           agentName: body.agent_name || body.agent || request.headers.get("x-hub-agent") || "",
         });
         const allowed = commentPolicy("edit", { identity: viewer, comment: found.comment, config: settings });
@@ -620,7 +621,7 @@ export async function onRequest(context) {
         const hint = threadQuery(url);
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
-        const viewer = commentsIdentity(request, access.email, { clientId: accessClientId(request) });
+        const viewer = commentsIdentity(request, access.email, { clientId });
         const allowed = commentPolicy("delete", { identity: viewer, comment: found.comment, config: settings });
         if (!allowed.ok) return bad(allowed.error, allowed.status);
         try {
@@ -643,7 +644,7 @@ export async function onRequest(context) {
         const hint = threadQuery(url, body);
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
-        const viewer = commentsIdentity(request, access.email, { clientId: accessClientId(request) });
+        const viewer = commentsIdentity(request, access.email, { clientId });
         const allowed = commentPolicy(action, { identity: viewer, comment: found.comment, config: settings });
         if (!allowed.ok) return bad(allowed.error, allowed.status);
         try {

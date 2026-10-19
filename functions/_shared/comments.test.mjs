@@ -10,6 +10,7 @@ import {
   COMMENT_PINNED_BODY_MAX,
   COMMENT_QUOTE_MAX,
   COMMENT_WRITE_RETRIES,
+  accessClientId,
   addCommentToThread,
   buildComment,
   buildMigratedComment,
@@ -93,10 +94,16 @@ test("no email and no service-token id is not a write identity; unknown never ma
 
   const payload = Buffer.from(JSON.stringify({ common_name: "client-id.access" })).toString("base64url");
   const token = `e30.${payload}.`;
-  const svc = commentsIdentity(
-    new Request("https://hub.example/api/comments", { headers: { "Cf-Access-Jwt-Assertion": token } }),
-    "",
-  );
+  const jwtReq = new Request("https://hub.example/api/comments", { headers: { "Cf-Access-Jwt-Assertion": token } });
+  const ignored = commentsIdentity(jwtReq, "");
+  assert.equal(ignored.id, "");
+  assert.equal(accessClientId(jwtReq), "");
+  assert.equal(accessClientId(jwtReq, {}), "");
+  assert.equal(accessClientId(jwtReq, { ACCESS_TEAM_DOMAIN: "team.cloudflareaccess.com" }), "");
+
+  const accessEnv = { ACCESS_TEAM_DOMAIN: "team.cloudflareaccess.com", ACCESS_AUD: "aud-tag" };
+  assert.equal(accessClientId(jwtReq, accessEnv), "client-id.access");
+  const svc = commentsIdentity(jwtReq, "", { env: accessEnv });
   assert.equal(svc.id, "svc:client-id.access");
   assert.equal(svc.email, "");
   assert.equal(svc.kind, "agent");
@@ -145,6 +152,19 @@ test("an agent may edit their own pinned comment only within 8000 chars", () => 
   );
   const adminEdit = editCommentInThread({ comments: [pinned] }, pinned.id, "y".repeat(8001), { identity: ADMIN, config: SETTINGS, now: NOW });
   assert.equal(adminEdit.comments[0].body.length, 8001);
+});
+
+test("an admin-authored pinned comment edited via MCP cannot grow past 8000", () => {
+  const comment = make(ADMIN, { body: "admin note", pinned: true }, "adm00001");
+  const mcpAdmin = { id: ADMIN.id, email: ADMIN.email, kind: "human", via: "mcp" };
+  assert.equal(commentPolicy("edit", { identity: mcpAdmin, comment, config: SETTINGS }).ok, true);
+  assert.throws(
+    () => editCommentInThread({ comments: [comment] }, comment.id, "x".repeat(8001), { identity: mcpAdmin, config: SETTINGS, now: NOW }),
+    { status: 413 },
+  );
+  const authorNote = make(PERSON, { body: "mine", pinned: true }, "per00001");
+  const authorEdit = editCommentInThread({ comments: [authorNote] }, authorNote.id, "y".repeat(8001), { identity: PERSON, config: SETTINGS, now: NOW });
+  assert.equal(authorEdit.comments[0].body.length, 8001);
 });
 
 test("HUB_ADMINS env values merge with config.comments.admins", () => {
