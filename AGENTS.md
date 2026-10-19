@@ -50,11 +50,11 @@ actions stay with a human in the hub.
 `comments.admins`. The API is 404 while the flag is off. There is no comments
 UI yet.
 
-Proposed defaults, pending Charlie:
+Locked by Charlie Oct 19:
 
 - Agents and MCP callers may POST a comment. It is stored with
   `author_kind: "agent"` and an agent name label. They cannot pin, unpin,
-  reorder or delete.
+  reorder or delete. There is no proposed flag: agents post directly.
 - Pin, unpin and reorder are admin-only (`comments.admins` emails).
 - Delete is admin or the comment's own author, and person-only.
 

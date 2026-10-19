@@ -62,15 +62,20 @@ test("a person can post and list; a spoofed author is ignored", async () => {
   const { comment } = await created.json();
   assert.equal(comment.author, person);
   assert.equal(comment.author_kind, "person");
+  assert.equal(comment.author_label, "");
   assert.equal(comment.body, "Welcome home");
   assert.equal(comment.scope, "home");
   assert.equal(comment.target_id, "home");
 
-  const listed = await api(bucket, "https://hub.example/api/comments?scope=home&target_id=index");
+  const listed = await api(bucket, "https://hub.example/api/comments?scope=home&target_id=index", {
+    extraHeaders: { origin: "https://hub.example" },
+  });
   assert.equal(listed.status, 200);
   const body = await listed.json();
   assert.equal(body.comments.length, 1);
   assert.equal(body.comments[0].author, person);
+  assert.equal(body.comments[0].author_kind, "person");
+  assert.equal(body.comments[0].author_label, "");
 });
 
 test("an agent may post with a bot label and cannot pin, unpin, reorder or delete", async () => {
@@ -208,6 +213,71 @@ test("a cross-site Origin cannot write comments", async () => {
   const res = await create(bucket, {}, { extraHeaders: { origin: "https://evil.example" } });
   assert.equal(res.status, 403);
   assert.match((await res.json()).error, /cross-site write refused/);
+});
+
+test("GET comments and pins return per-viewer capabilities and viewer flags", async () => {
+  const bucket = memoryBucket();
+  const created = await create(bucket, { body: "Welcome home" });
+  const { comment } = await created.json();
+  await api(bucket, `https://hub.example/api/comments/${comment.id}/pin`, {
+    method: "POST",
+    email: admin,
+    extraHeaders: { origin: "https://hub.example" },
+  });
+
+  const asAuthor = await (await api(bucket, "https://hub.example/api/comments?scope=home&target_id=home", {
+    extraHeaders: { origin: "https://hub.example" },
+  })).json();
+  assert.deepEqual(asAuthor.viewer, { can_pin: false, is_admin: false });
+  assert.equal(asAuthor.comments[0].author_kind, "person");
+  assert.equal(asAuthor.comments[0].can_edit, true);
+  assert.equal(asAuthor.comments[0].can_delete, true);
+  assert.equal(asAuthor.comments[0].can_pin, false);
+
+  const asAdmin = await (await api(bucket, "https://hub.example/api/comments?scope=home&target_id=home", {
+    email: admin,
+    extraHeaders: { origin: "https://hub.example" },
+  })).json();
+  assert.deepEqual(asAdmin.viewer, { can_pin: true, is_admin: true });
+  assert.equal(asAdmin.comments[0].can_edit, false);
+  assert.equal(asAdmin.comments[0].can_delete, true);
+  assert.equal(asAdmin.comments[0].can_pin, true);
+
+  const asOther = await (await api(bucket, "https://hub.example/api/comments/pins?scope=home&target_id=home", {
+    email: other,
+    extraHeaders: { origin: "https://hub.example" },
+  })).json();
+  assert.deepEqual(asOther.viewer, { can_pin: false, is_admin: false });
+  assert.equal(asOther.pins[0].can_edit, false);
+  assert.equal(asOther.pins[0].can_delete, false);
+  assert.equal(asOther.pins[0].can_pin, false);
+
+  const asAgent = await (await api(bucket, "https://hub.example/api/comments?scope=home&target_id=home")).json();
+  assert.deepEqual(asAgent.viewer, { can_pin: false, is_admin: false });
+  assert.equal(asAgent.comments[0].can_edit, true);
+  assert.equal(asAgent.comments[0].can_delete, false);
+  assert.equal(asAgent.comments[0].can_pin, false);
+});
+
+test("optional quote is stored as plain text and returned, never as HTML", async () => {
+  const bucket = memoryBucket();
+  const created = await create(bucket, {
+    body: "This line is wrong",
+    quote: "<script>alert(1)</script>Keep clips only.",
+  });
+  assert.equal(created.status, 201);
+  const { comment } = await created.json();
+  assert.equal(comment.quote, "alert(1)Keep clips only.");
+  assert.equal(comment.author_kind, "person");
+
+  const listed = await (await api(bucket, "https://hub.example/api/comments?scope=home&target_id=home", {
+    extraHeaders: { origin: "https://hub.example" },
+  })).json();
+  assert.equal(listed.comments[0].quote, "alert(1)Keep clips only.");
+  assert.doesNotMatch(listed.comments[0].quote, /</);
+
+  const long = await create(bucket, { body: "long quote", quote: `<em>${"q".repeat(600)}</em>` });
+  assert.equal((await long.json()).comment.quote.length, 500);
 });
 
 test("the generic file API refuses the comments/ prefix", async () => {

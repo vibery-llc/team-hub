@@ -10,6 +10,8 @@ import {
   addCommentToThread,
   buildComment,
   buildMigratedComment,
+  capabilitiesFor,
+  cleanQuote,
   commentPolicy,
   commentsConfig,
   commentsKey,
@@ -27,6 +29,7 @@ import {
   sortThreadComments,
   unpinCommentInThread,
   updateThread,
+  viewerFor,
 } from "./comments.js";
 
 const NOW = new Date("2026-10-19T12:00:00.000Z");
@@ -165,7 +168,7 @@ test("pins are per thread and top-level only, ordered by pin_order", () => {
   assert.equal(pinnedComments(doc.comments)[0].pin_order, 0);
 });
 
-test("proposed default: agents may create and cannot pin, unpin, reorder or delete", () => {
+test("locked by Charlie Oct 19: agents may create and cannot pin, unpin, reorder or delete", () => {
   const comment = topLevel();
   assert.equal(commentPolicy("create", { actor: AGENT, settings: SETTINGS }).ok, true);
   for (const action of ["pin", "unpin", "reorder", "delete"]) {
@@ -176,7 +179,7 @@ test("proposed default: agents may create and cannot pin, unpin, reorder or dele
   }
 });
 
-test("proposed default: pin, unpin and reorder are admin-only", () => {
+test("locked by Charlie Oct 19: pin, unpin and reorder are admin-only", () => {
   const comment = topLevel();
   for (const action of ["pin", "unpin", "reorder"]) {
     const person = commentPolicy(action, { actor: PERSON, comment, settings: SETTINGS });
@@ -186,7 +189,7 @@ test("proposed default: pin, unpin and reorder are admin-only", () => {
   }
 });
 
-test("proposed default: delete is admin or the comment author, and person-only", () => {
+test("locked by Charlie Oct 19: delete is admin or the comment author, and person-only", () => {
   const comment = topLevel();
   assert.equal(commentPolicy("delete", { actor: PERSON, comment, settings: SETTINGS }).ok, true);
   assert.equal(commentPolicy("delete", { actor: ADMIN, comment, settings: SETTINGS }).ok, true);
@@ -254,6 +257,58 @@ test("sortThreadComments keeps replies under their parent", () => {
   const b = { id: "b", parent_id: null, created_at: "2026-10-19T11:00:00.000Z" };
   const r = { id: "r", parent_id: "a", created_at: "2026-10-19T12:00:00.000Z" };
   assert.deepEqual(sortThreadComments([b, r, a]).map((item) => item.id), ["a", "r", "b"]);
+});
+
+test("quote is optional plain text, capped at 500, with tags stripped", () => {
+  assert.equal(cleanQuote(undefined), null);
+  assert.equal(cleanQuote(""), null);
+  assert.equal(cleanQuote("  selected line  "), "selected line");
+  assert.equal(cleanQuote("<em>hello</em> world"), "hello world");
+  assert.equal(cleanQuote("x".repeat(600)).length, 500);
+  const comment = buildComment(
+    { scope: "home", target_id: "home", body: "about this", quote: "<b>Welcome home</b>" },
+    PERSON,
+    NOW,
+    "quot0001",
+  );
+  assert.equal(comment.quote, "Welcome home");
+  assert.equal(presentComment(comment).quote, "Welcome home");
+});
+
+test("per-viewer capabilities come from commentPolicy", () => {
+  const comment = topLevel();
+  const reply = buildComment(
+    { scope: "home", target_id: "home", parent_id: comment.id, body: "reply" },
+    PERSON,
+    NOW,
+    "repl0001",
+  );
+  assert.deepEqual(capabilitiesFor(comment, PERSON, SETTINGS), {
+    can_edit: true,
+    can_delete: true,
+    can_pin: false,
+  });
+  assert.deepEqual(capabilitiesFor(comment, ADMIN, SETTINGS), {
+    can_edit: false,
+    can_delete: true,
+    can_pin: true,
+  });
+  assert.deepEqual(capabilitiesFor(comment, AGENT, SETTINGS), {
+    can_edit: false,
+    can_delete: false,
+    can_pin: false,
+  });
+  assert.equal(capabilitiesFor(reply, ADMIN, SETTINGS).can_pin, false);
+  assert.deepEqual(viewerFor(ADMIN, SETTINGS), { can_pin: true, is_admin: true });
+  assert.deepEqual(viewerFor(PERSON, SETTINGS), { can_pin: false, is_admin: false });
+  assert.deepEqual(viewerFor(AGENT, SETTINGS), { can_pin: false, is_admin: false });
+
+  const shown = presentComment(comment, PERSON, SETTINGS);
+  assert.equal(shown.author_kind, "person");
+  assert.equal(shown.author_label, "");
+  assert.equal(shown.can_edit, true);
+  assert.equal(shown.can_delete, true);
+  assert.equal(shown.can_pin, false);
 });
 
 test("migrated comments keep a byte-identical body and a legacy key", () => {
