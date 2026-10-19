@@ -21,3 +21,21 @@
 
 /style.css
   Cache-Control: no-cache
+
+/overview.js
+  Cache-Control: no-cache
+
+/overview-model.js
+  Cache-Control: no-cache
+
+/overview.json
+  Cache-Control: no-cache
+
+/quest.css
+  Cache-Control: no-cache
+
+/quest-model.js
+  Cache-Control: no-cache
+
+/quest.js
+  Cache-Control: no-cache
