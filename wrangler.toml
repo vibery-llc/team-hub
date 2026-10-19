@@ -32,8 +32,9 @@ HUB_NAME = "team-hub"
 # ACCESS_AUD = "your-application-aud-tag"
 
 # Comments admins (app config only; Access is unchanged). Comma-separated
-# emails or github:login values, merged with comments.admins in hub.config.js.
-# HUB_ADMINS = "you@example.com, github:you"
+# emails, merged with comments.admins in hub.config.js. Start with the hub
+# owner only. Do not commit a real address; use a placeholder.
+# HUB_ADMINS = "owner@example.com"
 
 # Backs functions/api/ — the team drop, build downloads and meeting media.
 # Large files cannot live in the deploy itself: Pages refuses any static asset
@@ -52,7 +53,7 @@ HUB_NAME = "team-hub"
 # Same Access application as production (it covers the preview wildcard too).
 # ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
 # ACCESS_AUD = "your-application-aud-tag"
-# HUB_ADMINS = "you@example.com, github:you"
+# HUB_ADMINS = "owner@example.com"
 
 [[env.preview.r2_buckets]]
 binding = "HUB_FILES"

@@ -13,11 +13,9 @@ const ENABLED = {
 };
 
 function headers(email, extra = {}) {
-  return {
-    "content-type": "application/json",
-    "Cf-Access-Authenticated-User-Email": email,
-    ...extra,
-  };
+  const h = { "content-type": "application/json", ...extra };
+  if (email) h["Cf-Access-Authenticated-User-Email"] = email;
+  return h;
 }
 
 function ctx(url, { method = "GET", body, email = person, extraHeaders, bucket, config = ENABLED, admins } = {}) {
@@ -247,7 +245,7 @@ test("GET comments and pins return per-viewer capabilities and viewer flags", as
     extraHeaders: { origin: "https://hub.example" },
   })).json();
   assert.deepEqual(asAdmin.viewer, { can_pin: true, is_admin: true });
-  assert.equal(asAdmin.comments[0].can_edit, false);
+  assert.equal(asAdmin.comments[0].can_edit, true);
   assert.equal(asAdmin.comments[0].can_delete, true);
   assert.equal(asAdmin.comments[0].can_pin, true);
 
@@ -325,10 +323,150 @@ test("HUB_ADMINS is merged into comments.admins so an env admin can pin", async 
     email: "ops@example.com",
     extraHeaders: { origin: "https://hub.example" },
     config: { comments: { enabled: true, admins: [] } },
-    admins: "ops@example.com, github:charlie",
+    admins: "ops@example.com",
   });
   assert.equal(allowed.status, 200);
   assert.equal((await allowed.json()).comment.pinned, true);
+});
+
+function unsignedJwt(payload) {
+  const enc = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+  return `${enc({ alg: "none" })}.${enc(payload)}.`;
+}
+
+test("a caller with no email cannot edit or delete, even with a forged Origin", async () => {
+  const bucket = memoryBucket();
+  await bucket.put("comments/home/home.json", JSON.stringify({
+    comments: [{
+      id: "legacy-home",
+      scope: "home",
+      target_id: "home",
+      parent_id: null,
+      author: "legacy",
+      author_kind: "system",
+      body: "Welcome home",
+      quote: "keep me",
+      created_at: "2026-10-01T00:00:00.000Z",
+      pinned: true,
+      pin_order: 0,
+      rev: "1",
+      edited_by: null,
+      proposal_id: null,
+    }],
+  }));
+
+  const forged = {
+    origin: "https://hub.example",
+    "sec-fetch-site": "same-origin",
+  };
+  const edited = await api(bucket, "https://hub.example/api/comments/legacy-home", {
+    method: "PATCH",
+    email: "",
+    extraHeaders: forged,
+    body: { body: "hijack" },
+  });
+  assert.equal(edited.status, 403);
+
+  const deleted = await api(bucket, "https://hub.example/api/comments/legacy-home", {
+    method: "DELETE",
+    email: "",
+    extraHeaders: forged,
+  });
+  assert.equal(deleted.status, 403);
+
+  const created = await create(bucket, {}, { email: "" });
+  assert.equal(created.status, 403);
+
+  const listed = await (await api(bucket, "https://hub.example/api/comments?scope=home&target_id=home", {
+    extraHeaders: { origin: "https://hub.example" },
+  })).json();
+  assert.equal(listed.comments[0].author, "legacy");
+  assert.equal(listed.comments[0].author_kind, "system");
+  assert.equal(listed.comments[0].body, "Welcome home");
+});
+
+test("a service-token common_name becomes author svc:<id> with author_kind agent", async () => {
+  const bucket = memoryBucket();
+  const created = await api(bucket, "https://hub.example/api/comments", {
+    method: "POST",
+    email: "",
+    extraHeaders: { "Cf-Access-Jwt-Assertion": unsignedJwt({ common_name: "client-id.access" }) },
+    body: { scope: "home", target_id: "home", body: "from a token" },
+  });
+  assert.equal(created.status, 201);
+  const { comment } = await created.json();
+  assert.equal(comment.author, "svc:client-id.access");
+  assert.equal(comment.author_kind, "agent");
+  assert.equal(comment.via, "mcp");
+});
+
+test("unpin of a pinned body over 8000 is 409 and asks to trim first", async () => {
+  const bucket = memoryBucket();
+  const created = await create(bucket, { body: "y".repeat(8001), pinned: true }, { email: admin });
+  assert.equal(created.status, 201);
+  const { comment } = await created.json();
+  const unpin = await api(bucket, `https://hub.example/api/comments/${comment.id}/unpin`, {
+    method: "POST",
+    email: admin,
+    extraHeaders: { origin: "https://hub.example" },
+  });
+  assert.equal(unpin.status, 409);
+  assert.match((await unpin.json()).error, /trim the body below 8000/);
+});
+
+test("an agent can edit their pinned comment only within 8000; an admin may use 256 KiB", async () => {
+  const bucket = memoryBucket();
+  const created = await api(bucket, "https://hub.example/api/comments", {
+    method: "POST",
+    body: { scope: "home", target_id: "home", body: "bot note", agent_name: "Codex" },
+  });
+  const { comment } = await created.json();
+  await api(bucket, `https://hub.example/api/comments/${comment.id}/pin`, {
+    method: "POST",
+    email: admin,
+    extraHeaders: { origin: "https://hub.example" },
+  });
+  const tooBig = await api(bucket, `https://hub.example/api/comments/${comment.id}`, {
+    method: "PATCH",
+    body: { body: "z".repeat(8001) },
+  });
+  assert.equal(tooBig.status, 413);
+  const adminEdit = await api(bucket, `https://hub.example/api/comments/${comment.id}`, {
+    method: "PATCH",
+    email: admin,
+    extraHeaders: { origin: "https://hub.example" },
+    body: { body: "z".repeat(8001) },
+  });
+  assert.equal(adminEdit.status, 200);
+  assert.equal((await adminEdit.json()).comment.body.length, 8001);
+});
+
+test("a non-admin, non-author cannot directly edit a pinned comment", async () => {
+  const bucket = memoryBucket();
+  const created = await create(bucket, { body: "Welcome home" });
+  const { comment } = await created.json();
+  await api(bucket, `https://hub.example/api/comments/${comment.id}/pin`, {
+    method: "POST",
+    email: admin,
+    extraHeaders: { origin: "https://hub.example" },
+  });
+  const sneak = await api(bucket, `https://hub.example/api/comments/${comment.id}`, {
+    method: "PATCH",
+    email: other,
+    extraHeaders: { origin: "https://hub.example" },
+    body: { body: "propose this instead" },
+  });
+  assert.equal(sneak.status, 403);
+  const asOther = await (await api(bucket, "https://hub.example/api/comments?scope=home&target_id=home", {
+    email: other,
+    extraHeaders: { origin: "https://hub.example" },
+  })).json();
+  assert.equal(asOther.comments[0].can_edit, false);
+  const asAdmin = await (await api(bucket, "https://hub.example/api/comments?scope=home&target_id=home", {
+    email: admin,
+    extraHeaders: { origin: "https://hub.example" },
+  })).json();
+  assert.equal(asAdmin.comments[0].can_edit, true);
 });
 
 test("the file API refuses the comments/ prefix", async () => {

@@ -89,10 +89,10 @@ export function bodyTooLarge(status = 413) {
 }
 
 /** 8000 chars by default; pinned top-level comments may use the 256 KiB budget. */
-export function assertBodySize(text, { pinned = false, parent_id = null } = {}, config) {
+export function assertBodySize(text, { pinned = false, parent_id = null, allowPinnedBudget = true } = {}, config) {
   const limits = limitsOf(config);
   if (String(text).length <= limits.body) return;
-  if (pinned && !parent_id && byteLength(text) <= limits.pinnedBody) return;
+  if (allowPinnedBudget && pinned && !parent_id && byteLength(text) <= limits.pinnedBody) return;
   throw bodyTooLarge();
 }
 
@@ -122,4 +122,33 @@ export function authorKindOf(identity) {
 
 export function isRestrictedCaller(identity) {
   return !identity || identity.via === "mcp" || identity.kind !== "human";
+}
+
+/** Empty, null and the sentinels "unknown" / "legacy" never identify an author. */
+export function usableActor(value) {
+  const v = String(value ?? "").trim();
+  if (!v) return "";
+  const lower = v.toLowerCase();
+  if (lower === "unknown" || lower === "legacy") return "";
+  return v;
+}
+
+export function hasWriteIdentity(identity) {
+  return Boolean(usableActor(identity?.email) || usableActor(identity?.id));
+}
+
+export function serviceAuthor(raw) {
+  const id = usableActor(raw);
+  if (!id) return "";
+  const trimmed = id.slice(0, 80);
+  return /^svc:/i.test(trimmed) ? trimmed : `svc:${trimmed}`;
+}
+
+export function isSystemComment(comment) {
+  return comment?.author_kind === "system" || String(comment?.author || "").trim().toLowerCase() === "legacy";
+}
+
+/** Human, non-MCP callers may use the pinned 256 KiB budget on edit. */
+export function isHumanAuthor(identity) {
+  return Boolean(identity && identity.kind === "human" && identity.via !== "mcp");
 }

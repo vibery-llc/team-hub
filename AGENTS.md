@@ -57,10 +57,14 @@ Locked by Charlie Oct 19:
   `via` and an agent name label. They cannot pin, unpin, reorder or delete.
   There is no proposed flag: agents post directly.
 - Pin, unpin and reorder are admin-only. Admins are `comments.admins`
-  merged with the server-side `HUB_ADMINS` env var (comma-separated emails
-  or `github:login`). This is app config only; Access is unchanged. An
-  agent must not set `HUB_ADMINS` or name `comments.admins`.
+  merged with the server-side `HUB_ADMINS` env var (comma-separated emails,
+  hub owner only to start). This is app config only; Access is unchanged.
+  An agent must not set `HUB_ADMINS` or name `comments.admins`. Do not
+  commit real emails; use the placeholder in `wrangler.toml`.
 - Delete is admin or the comment's own author, and person-only.
+- A pinned comment's body is edited directly only by an admin or its
+  author. Everyone else must propose. Approve is a later slice; this PR
+  refuses the direct edit and sets `can_edit` to match.
 - Bodies are 8000 characters; a pinned top-level comment may be 256 KiB.
   A reply or unpinned comment over 8000 is refused with 413.
 - `rev`, `edited_by` and `proposal_id` are stored so a later note proposal

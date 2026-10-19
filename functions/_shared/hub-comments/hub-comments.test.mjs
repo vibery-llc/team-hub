@@ -18,7 +18,7 @@ import {
 const DIR = dirname(fileURLToPath(import.meta.url));
 const NOW = new Date("2026-10-19T12:00:00.000Z");
 const HUMAN = { id: "dev@example.com", email: "dev@example.com", kind: "human", via: "browser" };
-const CONFIG = { admins: ["admin@example.com", "github:charlie"], limits: { body: 8000, pinnedBody: 256 * 1024, quote: 500 } };
+const CONFIG = { admins: ["admin@example.com"], limits: { body: 8000, pinnedBody: 256 * 1024, quote: 500 } };
 
 test("hub-comments has no imports outside this folder", () => {
   for (const name of readdirSync(DIR)) {
@@ -49,8 +49,8 @@ test("createHubComments injects bucket, identity, config and now", () => {
   assert.equal(comments.viewer().is_admin, false);
 });
 
-test("admins match email or github:login", () => {
-  assert.equal(isAdmin({ id: "github:charlie", email: "" }, CONFIG), true);
+test("admins match email only", () => {
+  assert.equal(isAdmin({ id: "github:charlie", email: "" }, CONFIG), false);
   assert.equal(isAdmin({ id: "admin@example.com", email: "admin@example.com" }, CONFIG), true);
   assert.equal(isAdmin(HUMAN, CONFIG), false);
 });
@@ -113,4 +113,15 @@ test("policy refuses pin and delete for via=mcp even when kind is human", () => 
   );
   assert.equal(commentPolicy("delete", { identity, comment, config: CONFIG }).ok, false);
   assert.equal(commentPolicy("pin", { identity, comment, config: CONFIG }).ok, false);
+});
+
+test("sameAuthor never matches empty, unknown or legacy", () => {
+  const ghost = { id: "unknown", email: "unknown", kind: "human", via: "browser" };
+  const comment = buildComment(
+    { scope: "home", target_id: "home", body: "mine" },
+    { identity: HUMAN, config: CONFIG, now: NOW, rand: "unk00001" },
+  );
+  assert.equal(commentPolicy("edit", { identity: ghost, comment: { ...comment, author: "unknown" }, config: CONFIG }).ok, false);
+  assert.equal(commentPolicy("edit", { identity: { id: "", email: "" }, comment, config: CONFIG }).ok, false);
+  assert.equal(commentPolicy("create", { identity: { id: "", email: "" }, config: CONFIG }).status, 403);
 });

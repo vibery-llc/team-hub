@@ -9,10 +9,11 @@ export function memoryBucket() {
     return String(value);
   };
 
+  const bareEtag = (etag) => String(etag || "").replace(/^"+|"+$/g, "");
   const etagFor = (body) => {
     let hash = 0;
     for (let i = 0; i < body.length; i++) hash = (Math.imul(31, hash) + body.charCodeAt(i)) >>> 0;
-    return `"${hash.toString(16)}-${body.length}"`;
+    return `${hash.toString(16)}-${body.length}`;
   };
 
   return {
@@ -22,12 +23,12 @@ export function memoryBucket() {
       const existing = store.get(key);
       const onlyIf = opts.onlyIf;
       if (onlyIf) {
-        if (onlyIf.etagMatches && (!existing || existing.etag !== onlyIf.etagMatches)) return null;
+        if (onlyIf.etagMatches && (!existing || bareEtag(existing.etag) !== bareEtag(onlyIf.etagMatches))) return null;
         if (onlyIf.etagDoesNotMatch === "*" && existing) return null;
       }
       store.set(key, { body, etag });
       if (opts.customMetadata) meta.set(key, { ...opts.customMetadata });
-      return { key, etag, httpEtag: etag };
+      return { key, etag, httpEtag: `"${etag}"` };
     },
     async get(key) {
       const row = store.get(key);
@@ -35,7 +36,7 @@ export function memoryBucket() {
       return {
         key,
         etag: row.etag,
-        httpEtag: row.etag,
+        httpEtag: `"${row.etag}"`,
         customMetadata: meta.get(key) || {},
         text: async () => row.body,
         json: async () => JSON.parse(row.body),
@@ -43,7 +44,7 @@ export function memoryBucket() {
     },
     async head(key) {
       const row = store.get(key);
-      return row ? { key, etag: row.etag, httpEtag: row.etag } : null;
+      return row ? { key, etag: row.etag, httpEtag: `"${row.etag}"` } : null;
     },
     async delete(key) {
       store.delete(key);
@@ -54,7 +55,8 @@ export function memoryBucket() {
         .filter((k) => k.startsWith(prefix))
         .slice(0, limit)
         .map((key) => {
-          const row = { key, etag: store.get(key).etag, httpEtag: store.get(key).etag };
+          const stored = store.get(key).etag;
+          const row = { key, etag: stored, httpEtag: `"${stored}"` };
           if (include.includes("customMetadata")) row.customMetadata = meta.get(key) || {};
           return row;
         });
