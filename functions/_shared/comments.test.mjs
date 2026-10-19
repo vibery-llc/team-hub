@@ -79,16 +79,83 @@ test("commentsIdentity maps same-site browser writes to human/browser and header
   assert.equal(mcp.label, "Codex");
 });
 
+test("no email and no service-token id is not a write identity; unknown never matches", () => {
+  const none = commentsIdentity(new Request("https://hub.example/api/comments"), "", {});
+  assert.equal(none.id, "");
+  assert.equal(none.email, "");
+  assert.equal(commentPolicy("create", { identity: none, config: SETTINGS }).ok, false);
+  assert.equal(commentPolicy("create", { identity: none, config: SETTINGS }).status, 403);
+
+  const unknown = { id: "unknown", email: "unknown", kind: "human", via: "browser" };
+  const comment = { ...topLevel(), author: "unknown" };
+  assert.equal(commentPolicy("edit", { identity: unknown, comment, config: SETTINGS }).ok, false);
+  assert.equal(commentPolicy("delete", { identity: unknown, comment, config: SETTINGS }).ok, false);
+
+  const payload = Buffer.from(JSON.stringify({ common_name: "client-id.access" })).toString("base64url");
+  const token = `e30.${payload}.`;
+  const svc = commentsIdentity(
+    new Request("https://hub.example/api/comments", { headers: { "Cf-Access-Jwt-Assertion": token } }),
+    "",
+  );
+  assert.equal(svc.id, "svc:client-id.access");
+  assert.equal(svc.email, "");
+  assert.equal(svc.kind, "agent");
+  assert.equal(commentPolicy("create", { identity: svc, config: SETTINGS }).ok, true);
+  const stored = make(svc, { body: "from a token" }, "svc00001");
+  assert.equal(stored.author, "svc:client-id.access");
+  assert.equal(stored.author_kind, "agent");
+});
+
+test("migrated notes with no author are legacy/system and only admins may edit or delete them", () => {
+  const comment = buildMigratedComment({
+    scope: "home",
+    target_id: "home",
+    body: "Welcome home",
+    author: "",
+    created_at: "2026-10-01T00:00:00.000Z",
+    pinned: true,
+    repo_key: "notes/pages/index.json",
+    etag_or_updatedAt: "etag",
+  }, { now: NOW, rand: "leg00001", config: SETTINGS });
+  assert.equal(comment.author, "legacy");
+  assert.equal(comment.author_kind, "system");
+  assert.equal(presentComment(comment).author_kind, "system");
+  assert.equal(commentPolicy("edit", { identity: PERSON, comment, config: SETTINGS }).ok, false);
+  assert.equal(commentPolicy("delete", { identity: PERSON, comment, config: SETTINGS }).ok, false);
+  assert.equal(commentPolicy("edit", { identity: ADMIN, comment, config: SETTINGS }).ok, true);
+  assert.equal(commentPolicy("delete", { identity: ADMIN, comment, config: SETTINGS }).ok, true);
+});
+
+test("unpin of a body over 8000 is 409 and tells the caller to trim first", () => {
+  const long = make(ADMIN, { body: "L".repeat(8001), pinned: true }, "long0001");
+  assert.throws(
+    () => unpinCommentInThread({ comments: [long] }, long.id, SETTINGS),
+    { status: 409, message: /trim the body below 8000/ },
+  );
+});
+
+test("an agent may edit their own pinned comment only within 8000 chars", () => {
+  const comment = make(AGENT, { body: "bot note" }, "abot0001");
+  const pinned = pinCommentInThread({ comments: [comment] }, comment.id, { identity: ADMIN, now: NOW }).comments[0];
+  const grown = editCommentInThread({ comments: [pinned] }, pinned.id, "ok".repeat(10), { identity: AGENT, config: SETTINGS, now: NOW });
+  assert.equal(grown.comments[0].body, "ok".repeat(10));
+  assert.throws(
+    () => editCommentInThread({ comments: [pinned] }, pinned.id, "x".repeat(8001), { identity: AGENT, config: SETTINGS, now: NOW }),
+    { status: 413 },
+  );
+  const adminEdit = editCommentInThread({ comments: [pinned] }, pinned.id, "y".repeat(8001), { identity: ADMIN, config: SETTINGS, now: NOW });
+  assert.equal(adminEdit.comments[0].body.length, 8001);
+});
+
 test("HUB_ADMINS env values merge with config.comments.admins", () => {
   assert.deepEqual(parseHubAdmins("Admin@Example.com, github:charlie, "), [
     "admin@example.com",
-    "github:charlie",
   ]);
   const merged = commentsConfig(
     { comments: { enabled: true, admins: ["admin@example.com"] } },
     "ops@example.com, github:charlie",
   );
-  assert.deepEqual(merged.admins, ["admin@example.com", "ops@example.com", "github:charlie"]);
+  assert.deepEqual(merged.admins, ["admin@example.com", "ops@example.com"]);
 });
 
 test("parseHubConfigSource reads the tenant file's HUB_CONFIG assignment", () => {
@@ -160,13 +227,15 @@ test("replies go one level deep only", () => {
   );
 });
 
-test("soft delete hides the body but keeps the record", () => {
-  const top = topLevel("Secret note");
+test("soft delete hides the body and quote but keeps the record", () => {
+  const top = topLevel("Secret note", { quote: "selected line" });
   const deleted = softDeleteCommentInThread({ comments: [top] }, top.id, { identity: PERSON, now: NOW });
   assert.equal(deleted.comments[0].body, "Secret note");
+  assert.equal(deleted.comments[0].quote, "selected line");
   assert.equal(deleted.comments[0].deleted_at, NOW.toISOString());
   assert.equal(deleted.comments[0].deleted_by, PERSON.email);
   assert.equal(presentComment(deleted.comments[0]).body, "");
+  assert.equal(presentComment(deleted.comments[0]).quote, null);
   assert.equal(presentComment(deleted.comments[0]).id, top.id);
 });
 
@@ -336,6 +405,17 @@ test("per-viewer capabilities come from commentPolicy", () => {
   assert.equal(shown.can_edit, true);
   assert.equal(shown.can_delete, true);
   assert.equal(shown.can_pin, false);
+
+  const pinned = { ...comment, pinned: true };
+  assert.equal(capabilitiesFor(pinned, PERSON, SETTINGS).can_edit, true);
+  assert.equal(capabilitiesFor(pinned, ADMIN, SETTINGS).can_edit, true);
+  assert.equal(capabilitiesFor(pinned, describeActor(true, "other@example.com"), SETTINGS).can_edit, false);
+  assert.equal(commentPolicy("edit", { identity: ADMIN, comment: pinned, config: SETTINGS }).ok, true);
+  assert.equal(commentPolicy("edit", {
+    identity: describeActor(true, "other@example.com"),
+    comment: pinned,
+    config: SETTINGS,
+  }).ok, false);
 });
 
 test("migrated comments keep a byte-identical body, a legacy key and a seeded rev", () => {

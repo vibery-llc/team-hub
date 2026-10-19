@@ -79,6 +79,7 @@ import {
   cleanScope,
   cleanTargetId,
   commentPolicy,
+  accessClientId,
   commentsConfig,
   commentsIdentity,
   editCommentInThread,
@@ -531,7 +532,7 @@ export async function onRequest(context) {
       if (route === "comments" && method === "GET") {
         const loc = threadQuery(url);
         if (loc.error) return bad(loc.error);
-        const viewer = commentsIdentity(request, identity());
+        const viewer = commentsIdentity(request, access.email, { clientId: accessClientId(request) });
         const { doc } = await readThread(bucket, loc.scope, loc.targetId);
         return json({
           scope: loc.scope,
@@ -544,7 +545,7 @@ export async function onRequest(context) {
       if (route === "comments/pins" && method === "GET") {
         const loc = threadQuery(url);
         if (loc.error) return bad(loc.error);
-        const viewer = commentsIdentity(request, identity());
+        const viewer = commentsIdentity(request, access.email, { clientId: accessClientId(request) });
         const { doc } = await readThread(bucket, loc.scope, loc.targetId);
         return json({
           scope: loc.scope,
@@ -559,7 +560,8 @@ export async function onRequest(context) {
         if (!gate.ok) return refuseWrite(gate);
         let body;
         try { body = await request.json(); } catch { return bad("bad json"); }
-        const viewer = commentsIdentity(request, identity(), {
+        const viewer = commentsIdentity(request, access.email, {
+          clientId: accessClientId(request),
           agentName: body.agent_name || body.agent || request.headers.get("x-hub-agent") || "",
         });
         const allowed = commentPolicy("create", { identity: viewer, config: settings });
@@ -595,7 +597,8 @@ export async function onRequest(context) {
         const hint = threadQuery(url, body);
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
-        const viewer = commentsIdentity(request, identity(), {
+        const viewer = commentsIdentity(request, access.email, {
+          clientId: accessClientId(request),
           agentName: body.agent_name || body.agent || request.headers.get("x-hub-agent") || "",
         });
         const allowed = commentPolicy("edit", { identity: viewer, comment: found.comment, config: settings });
@@ -617,7 +620,7 @@ export async function onRequest(context) {
         const hint = threadQuery(url);
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
-        const viewer = commentsIdentity(request, identity());
+        const viewer = commentsIdentity(request, access.email, { clientId: accessClientId(request) });
         const allowed = commentPolicy("delete", { identity: viewer, comment: found.comment, config: settings });
         if (!allowed.ok) return bad(allowed.error, allowed.status);
         try {
@@ -640,13 +643,13 @@ export async function onRequest(context) {
         const hint = threadQuery(url, body);
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
-        const viewer = commentsIdentity(request, identity());
+        const viewer = commentsIdentity(request, access.email, { clientId: accessClientId(request) });
         const allowed = commentPolicy(action, { identity: viewer, comment: found.comment, config: settings });
         if (!allowed.ok) return bad(allowed.error, allowed.status);
         try {
           const { doc } = await updateThread({ bucket }, found.comment.scope, found.comment.target_id, (current) => {
             if (action === "pin") return pinCommentInThread(current, id, { identity: viewer });
-            if (action === "unpin") return unpinCommentInThread(current, id);
+            if (action === "unpin") return unpinCommentInThread(current, id, settings);
             return reorderPinsInThread(current, body?.order);
           });
           return json({

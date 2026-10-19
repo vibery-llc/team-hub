@@ -6,8 +6,13 @@
  */
 
 import { browserWrite } from "./origin.js";
-import { cleanLine } from "./hub-comments/util.js";
+import { cleanLine, serviceAuthor, usableActor } from "./hub-comments/util.js";
 export {
+  hasWriteIdentity,
+  isHumanAuthor,
+  isSystemComment,
+  serviceAuthor,
+  usableActor,
   COMMENT_SCOPES,
   COMMENTS_PREFIX,
   COMMENT_WRITE_RETRIES,
@@ -54,20 +59,22 @@ export function parseHubConfigSource(source) {
   return fn({}) || {};
 }
 
-/** Comma-separated emails or github:login values from HUB_ADMINS. */
-export function parseHubAdmins(raw) {
-  return String(raw ?? "")
-    .split(",")
+/** Emails only. github:login and other non-email entries are dropped. */
+function emailAdmins(entries) {
+  return (entries || [])
     .map((entry) => String(entry || "").trim().toLowerCase())
-    .filter(Boolean);
+    .filter((entry) => entry.includes("@"));
+}
+
+/** Comma-separated emails from HUB_ADMINS. github:login is ignored (future PR). */
+export function parseHubAdmins(raw) {
+  return emailAdmins(String(raw ?? "").split(","));
 }
 
 export function commentsConfig(config, envAdmins) {
   const raw = config?.comments || {};
-  const fromConfig = Array.isArray(raw.admins)
-    ? raw.admins.map((email) => String(email || "").trim().toLowerCase()).filter(Boolean)
-    : [];
-  const fromEnv = Array.isArray(envAdmins) ? envAdmins.map((e) => String(e).trim().toLowerCase()).filter(Boolean) : parseHubAdmins(envAdmins);
+  const fromConfig = Array.isArray(raw.admins) ? emailAdmins(raw.admins) : [];
+  const fromEnv = Array.isArray(envAdmins) ? emailAdmins(envAdmins) : parseHubAdmins(envAdmins);
   const admins = [...new Set([...fromConfig, ...fromEnv])];
   return {
     enabled: raw.enabled === true,
@@ -80,20 +87,46 @@ export function commentsConfig(config, envAdmins) {
   };
 }
 
+function jwtPayload(token) {
+  const parts = String(token || "").split(".");
+  if (parts.length < 2) return {};
+  try {
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const bin = atob(b64 + "===".slice((b64.length + 3) % 4));
+    return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)))) || {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Access (access.js) only returns email. A service token JWT has no
+ * email; its stable id is common_name. We read that claim here without
+ * changing Access. When Access is configured the JWT was already verified.
+ */
+export function accessClientId(request) {
+  const payload = jwtPayload(request?.headers?.get?.("Cf-Access-Jwt-Assertion"));
+  return String(payload.common_name || "").trim();
+}
+
 /**
  * Map a request onto the injected identity bag the core expects.
  * Browser same-site => kind human, via browser. Anything else (MCP, curl)
- * => via mcp. author_kind is derived inside the core.
+ * => via mcp. No email and no service-token id => empty id (writes 403).
  */
 export function commentsIdentity(request, email, extra = {}) {
   const browser = browserWrite(request).ok;
-  const id = String(extra.id || email || "").trim() || "unknown";
+  const actorEmail = usableActor(email);
+  const clientId = usableActor(extra.id || extra.clientId || accessClientId(request));
+  let id = "";
+  if (actorEmail) id = actorEmail;
+  else if (clientId) id = serviceAuthor(clientId);
   const via = extra.via || (browser ? "browser" : "mcp");
-  const kind = extra.kind || (browser ? "human" : "agent");
+  const kind = extra.kind || (actorEmail && browser ? "human" : "agent");
   const label = browser ? "" : cleanLine(extra.agentName || extra.label || "", 80);
   return {
     id,
-    email: String(email || "").trim(),
+    email: actorEmail,
     kind,
     via,
     label,
@@ -102,7 +135,7 @@ export function commentsIdentity(request, email, extra = {}) {
 
 /** Test helper: a human browser actor vs an MCP/agent actor. */
 export function describeActor(isPerson, email, agentName = "") {
-  const id = String(email || "").trim() || "unknown";
+  const id = usableActor(email);
   if (isPerson) return { id, email: id, kind: "human", via: "browser", label: "" };
   return { id, email: id, kind: "agent", via: "mcp", label: cleanLine(agentName, 80) };
 }

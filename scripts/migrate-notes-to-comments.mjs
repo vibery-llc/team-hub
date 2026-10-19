@@ -40,7 +40,7 @@ export function pinOrderFromConfig(config) {
     .filter(Boolean);
 }
 
-export function teamHubNotesAdapter({ pinOrder = [] } = {}) {
+export function teamHubNotesAdapter({ pinOrder: _pinOrder = [] } = {}) {
   return {
     name: "team-hub-notes",
     async listNotes(source) {
@@ -67,7 +67,6 @@ export function teamHubNotesAdapter({ pinOrder = [] } = {}) {
     mapNote(note) {
       const page = note.page;
       const home = page === "index" || page === "home";
-      const order = pinOrder.indexOf(page);
       return {
         scope: home ? "home" : "page",
         target_id: home ? "home" : page,
@@ -75,7 +74,7 @@ export function teamHubNotesAdapter({ pinOrder = [] } = {}) {
         author: note.updatedBy,
         created_at: note.updatedAt,
         pinned: Boolean(String(note.body || "").length),
-        pin_order: order >= 0 ? order : pinOrder.length,
+        pin_order: 0,
         pinned_by: note.updatedBy,
         repo_key: note.repo_key || noteKey(page),
         etag_or_updatedAt: note.etag_or_updatedAt || note.updatedAt || "",
@@ -177,7 +176,20 @@ export async function migrateNotes({
       continue;
     }
 
-    const comment = buildMigratedComment(mapped, { now, config: commentsConfig({ comments: { enabled: true } }) });
+    let comment;
+    try {
+      comment = buildMigratedComment(mapped, { now, config: commentsConfig({ comments: { enabled: true } }) });
+    } catch (err) {
+      report.invalid += 1;
+      report.items.push({
+        repo_key: mapped.repo_key || note.repo_key,
+        scope: mapped.scope,
+        target_id: mapped.target_id,
+        action: "invalid",
+        error: err.message,
+      });
+      continue;
+    }
     const byteIdentical = comment.body === mapped.body && comment.body === preserveBody(mapped.body);
     const item = {
       repo_key: comment.legacy.repo_key,

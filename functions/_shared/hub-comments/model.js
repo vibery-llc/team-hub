@@ -12,8 +12,11 @@ import {
   preserveBody,
   bumpRev,
   seedRev,
+  hasWriteIdentity,
+  isHumanAuthor,
+  usableActor,
 } from "./util.js";
-import { capabilitiesFor } from "./policy.js";
+import { capabilitiesFor, isAdmin } from "./policy.js";
 
 export function emptyThread() {
   return { comments: [] };
@@ -24,10 +27,10 @@ export function presentComment(comment, identity, config) {
   const shown = {
     ...comment,
     body: comment.deleted_at ? "" : comment.body,
-    author_kind: comment.author_kind === "agent" ? "agent" : "person",
+    author_kind: comment.author_kind === "agent" ? "agent" : comment.author_kind === "system" ? "system" : "person",
     author_label: comment.author_label || "",
     via: comment.via || null,
-    quote: comment.quote || null,
+    quote: comment.deleted_at ? null : (comment.quote || null),
     rev: comment.rev || "1",
     edited_by: comment.edited_by || null,
     proposal_id: comment.proposal_id || null,
@@ -88,7 +91,10 @@ export function buildComment(input, { identity, config, now = new Date(), rand =
   const prepared = cleanBody(input?.body, Number.MAX_SAFE_INTEGER);
   if (!prepared) throw new Error("body is required");
   assertBodySize(prepared, { pinned, parent_id: input?.parent_id || null }, config);
-  if (!identity?.email && !identity?.id) throw new Error("author is required");
+  if (!hasWriteIdentity(identity)) {
+    throw Object.assign(new Error("no identity on this request"), { status: 403 });
+  }
+  const author = usableActor(identity.email) || usableActor(identity.id);
   let runOfShowItem = null;
   if (input?.run_of_show_item != null && input.run_of_show_item !== "") {
     runOfShowItem = cleanLine(String(input.run_of_show_item), 120);
@@ -101,7 +107,7 @@ export function buildComment(input, { identity, config, now = new Date(), rand =
     scope,
     targetId,
     parentId: input?.parent_id ?? null,
-    author: identity.email || identity.id,
+    author,
     authorKind: authorKindOf(identity),
     authorLabel: authorKindOf(identity) === "agent" ? (identity.label || "") : "",
     via: identity.via || null,
@@ -124,12 +130,13 @@ export function buildMigratedComment(mapped, { now = new Date(), rand = "", conf
   const targetId = cleanTargetId(scope, mapped?.target_id);
   if (!scope || !targetId) throw new Error("scope must be page, service or home, with a target_id");
   const pinned = mapped?.pinned === true;
-  const limits = limitsOf(config);
-  const max = pinned ? limits.pinnedBody : limits.body;
-  const body = preserveBody(mapped?.body, max);
+  const body = preserveBody(mapped?.body);
   if (!body) throw new Error("body is required");
-  assertBodySize(body, { pinned, parent_id: null }, config);
-  const author = cleanLine(mapped?.author, 200) || "unknown";
+  assertBodySize(body, { pinned, parent_id: null, allowPinnedBudget: pinned }, config);
+  const rawAuthor = cleanLine(mapped?.author, 200);
+  const hasAuthor = Boolean(usableActor(rawAuthor));
+  const author = hasAuthor ? rawAuthor : "legacy";
+  const authorKind = hasAuthor ? "person" : "system";
   const createdAt = mapped?.created_at || now.toISOString();
   const legacyEtag = String(mapped?.etag_or_updatedAt || createdAt);
   return commentFields({
@@ -138,7 +145,7 @@ export function buildMigratedComment(mapped, { now = new Date(), rand = "", conf
     targetId,
     parentId: null,
     author,
-    authorKind: "person",
+    authorKind,
     authorLabel: "",
     via: "migration",
     body,
@@ -146,7 +153,7 @@ export function buildMigratedComment(mapped, { now = new Date(), rand = "", conf
     pinned,
     pinnedAt: pinned ? (mapped?.pinned_at || createdAt) : null,
     pinnedBy: pinned ? (mapped?.pinned_by || author) : null,
-    pinOrder: pinned ? Number(mapped?.pin_order ?? 0) : null,
+    pinOrder: pinned ? 0 : null,
     rev: seedRev(legacyEtag),
     proposalId: mapped?.proposal_id || null,
     legacy: {
@@ -160,6 +167,7 @@ export function addCommentToThread(doc, comment) {
   const thread = { comments: [...(doc?.comments || [])] };
   comment.parent_id = parentOf(thread, comment.parent_id);
   thread.comments.push(comment);
+  thread.comments = compactPinOrder(thread.comments);
   return thread;
 }
 
@@ -168,7 +176,12 @@ export function editCommentInThread(doc, id, body, { identity, config, now = new
     if (comment.deleted_at) throw new Error("deleted comments cannot be edited");
     const prepared = cleanBody(body, Number.MAX_SAFE_INTEGER);
     if (!prepared) throw new Error("body is required");
-    assertBodySize(prepared, { pinned: comment.pinned, parent_id: comment.parent_id }, config);
+    const allowPinnedBudget = isAdmin(identity, config) || isHumanAuthor(identity);
+    assertBodySize(prepared, {
+      pinned: comment.pinned,
+      parent_id: comment.parent_id,
+      allowPinnedBudget,
+    }, config);
     const next = {
       ...comment,
       body: prepared,
@@ -222,9 +235,16 @@ export function pinCommentInThread(doc, id, { identity, now = new Date() } = {})
   });
 }
 
-export function unpinCommentInThread(doc, id) {
+export function unpinCommentInThread(doc, id, config) {
+  const limits = limitsOf(config);
   const next = mapComment(doc, id, (comment) => {
     if (!comment.pinned) return comment;
+    if (String(comment.body || "").length > limits.body) {
+      throw Object.assign(
+        new Error("trim the body below 8000 characters before unpinning"),
+        { status: 409 },
+      );
+    }
     return {
       ...comment,
       pinned: false,

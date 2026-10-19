@@ -1,12 +1,16 @@
 /**
  * Locked by Charlie Oct 19. Identity and admins are injected; this file
  * never reads Access, env, or hub.config itself.
+ *
+ * Admins are emails only. github:login is ignored here; wiring that up
+ * is a separate future PR. The identity bag is currently email-only
+ * plus an optional service-token id (svc:<id>).
  */
 
-import { isRestrictedCaller } from "./util.js";
+import { hasWriteIdentity, isRestrictedCaller, isSystemComment, usableActor } from "./util.js";
 
 function norm(value) {
-  return String(value || "").trim().toLowerCase();
+  return usableActor(value).toLowerCase();
 }
 
 export function isAdmin(identity, config) {
@@ -15,7 +19,8 @@ export function isAdmin(identity, config) {
   const id = norm(identity?.id);
   return admins.some((entry) => {
     const admin = norm(entry);
-    return Boolean(admin && (admin === email || admin === id));
+    if (!admin || !admin.includes("@")) return false;
+    return Boolean((email && admin === email) || (id && admin === id));
   });
 }
 
@@ -23,7 +28,8 @@ function sameAuthor(identity, comment) {
   const email = norm(identity?.email);
   const id = norm(identity?.id);
   const author = norm(comment?.author);
-  return Boolean(author && (author === email || author === id));
+  if (!author || (!email && !id)) return false;
+  return author === email || author === id;
 }
 
 /**
@@ -36,9 +42,16 @@ function sameAuthor(identity, comment) {
  *      comment's own author. Both require a human identity that did not
  *      arrive via MCP.
  *   3. A long service note becomes one pinned top-level comment.
+ *   4. Writes with no email fail closed unless a stable service-token
+ *      id is present. sameAuthor never matches empty, null, "unknown"
+ *      or "legacy". Migrated notes with author "legacy" / author_kind
+ *      "system" are admin-only to edit or delete.
+ *   5. A pinned comment's body is edited directly only by an admin or
+ *      its author. Everyone else must propose (proposal_id). Approve
+ *      stays a later slice; this PR refuses the direct edit.
  */
 export function commentPolicy(action, { identity, comment, config }) {
-  if (!identity?.id && !identity?.email) {
+  if (!hasWriteIdentity(identity)) {
     return { ok: false, status: 403, error: "no identity on this request" };
   }
 
@@ -47,7 +60,19 @@ export function commentPolicy(action, { identity, comment, config }) {
   if (action === "edit") {
     if (!comment) return { ok: false, status: 404, error: "not found" };
     if (comment.deleted_at) return { ok: false, status: 400, error: "deleted comments cannot be edited" };
-    if (!sameAuthor(identity, comment)) return { ok: false, status: 403, error: "only the author can edit this comment" };
+    if (isSystemComment(comment)) {
+      if (isRestrictedCaller(identity) || !isAdmin(identity, config)) {
+        return { ok: false, status: 403, error: "only an admin can edit a migrated note" };
+      }
+      return { ok: true };
+    }
+    const authorOk = sameAuthor(identity, comment);
+    const adminOk = isAdmin(identity, config) && !isRestrictedCaller(identity);
+    if (comment.pinned) {
+      if (authorOk || adminOk) return { ok: true };
+      return { ok: false, status: 403, error: "only an admin or the author can edit a pinned comment" };
+    }
+    if (!authorOk) return { ok: false, status: 403, error: "only the author can edit this comment" };
     return { ok: true };
   }
 
@@ -56,6 +81,12 @@ export function commentPolicy(action, { identity, comment, config }) {
       return { ok: false, status: 403, error: "only a person can delete a comment" };
     }
     if (!comment) return { ok: false, status: 404, error: "not found" };
+    if (isSystemComment(comment)) {
+      if (!isAdmin(identity, config)) {
+        return { ok: false, status: 403, error: "only an admin can delete a migrated note" };
+      }
+      return { ok: true };
+    }
     if (!(isAdmin(identity, config) || sameAuthor(identity, comment))) {
       return { ok: false, status: 403, error: "only an admin or the author can delete this comment" };
     }

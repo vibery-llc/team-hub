@@ -50,7 +50,7 @@ test("team-hub notes map index/home to scope=home and other pages to scope=page"
   assert.deepEqual({ scope: meetings.scope, target_id: meetings.target_id, pin_order: meetings.pin_order }, {
     scope: "page",
     target_id: "meetings",
-    pin_order: 1,
+    pin_order: 0,
   });
   assert.equal(home.body, homeBody);
 });
@@ -96,6 +96,9 @@ test("apply writes one comment per note and never touches old note keys", async 
   assert.equal(home.doc.comments[0].author, "human@example.com");
   assert.equal(home.doc.comments[0].pinned, true);
   assert.equal(home.doc.comments[0].legacy.repo_key, "notes/pages/index.json");
+  assert.equal(home.doc.comments[0].pin_order, 0);
+  const meetings = await readThread(bucket, "page", "meetings");
+  assert.equal(meetings.doc.comments[0].pin_order, 0);
   assert.equal(await (await bucket.get(noteKey("index"))).text(), original);
   assert.ok(await bucket.head(noteKey("meetings")));
 });
@@ -133,6 +136,41 @@ test("migrated comments seed rev from the legacy etag and keep a long pinned bod
   assert.equal(home.doc.comments[0].rev, got.httpEtag);
   assert.equal(home.doc.comments[0].edited_by, null);
   assert.equal(home.doc.comments[0].proposal_id, null);
+});
+
+test("a note with no author becomes legacy/system", async () => {
+  const source = memoryBucket();
+  const dest = memoryBucket();
+  await seedNote(source, "index", "Welcome home", "");
+  const report = await migrateNotes({
+    adapter: teamHubNotesAdapter({ pinOrder: ["index"] }),
+    source,
+    dest,
+    apply: true,
+    now: NOW,
+  });
+  assert.equal(report.written, 1);
+  const home = await readThread(dest, "home", "home");
+  assert.equal(home.doc.comments[0].author, "legacy");
+  assert.equal(home.doc.comments[0].author_kind, "system");
+});
+
+test("a note over 256 KiB of non-ASCII text is invalid and does not crash", async () => {
+  const source = memoryBucket();
+  const dest = memoryBucket();
+  const body = "é".repeat(131073);
+  assert.ok(Buffer.byteLength(body, "utf8") > 256 * 1024);
+  await seedNote(source, "index", body);
+  const report = await migrateNotes({
+    adapter: teamHubNotesAdapter({ pinOrder: ["index"] }),
+    source,
+    dest,
+    apply: true,
+    now: NOW,
+  });
+  assert.equal(report.invalid, 1);
+  assert.equal(report.items[0].action, "invalid");
+  assert.equal(await dest.head(commentsKey("home", "home")), null);
 });
 
 test("compass stub: a long service note becomes one pinned service comment", async () => {

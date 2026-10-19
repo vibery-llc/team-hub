@@ -14,6 +14,11 @@ export {
   authorKindOf,
   assertBodySize,
   bumpRev,
+  hasWriteIdentity,
+  isHumanAuthor,
+  isSystemComment,
+  serviceAuthor,
+  usableActor,
   cleanBody,
   cleanId,
   cleanLine,
@@ -55,6 +60,7 @@ export {
 } from "./model.js";
 
 export {
+  bareEtag,
   findCommentLocation,
   listCommentObjects,
   readThread,
