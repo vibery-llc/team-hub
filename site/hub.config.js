@@ -171,6 +171,21 @@ globalThis.HUB_CONFIG = {
     enabled: true,
   },
 
+  /* Unified comments on a page, a service, or the home thread. A comment
+     can be pinned (for example a Welcome home note on the homepage). Off
+     until a human sets enabled: true. Agents must not turn this on.
+
+     Proposed defaults, pending Charlie:
+       agents may post (stored with author_kind "agent") but cannot pin,
+       unpin, reorder or delete;
+       pin, unpin and reorder are admin-only;
+       delete is admin or the comment's author, and person-only.
+     `admins` is a list of emails. */
+  comments: {
+    enabled: false,
+    admins: [],
+  },
+
   /* Pipeline scoreboard — at-a-glance status gauges showing PASS/WAIT/FAIL
      states with evidence. Enable this to show the scoreboard strip on the
      dashboard, reading from the snapshot JSON file you maintain.

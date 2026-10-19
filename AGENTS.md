@@ -43,3 +43,21 @@ Agents may file feedback, comment, and claim an open item. They may propose
 a pinned-note update (`propose_note`). They must not pin a note, approve or
 reject a proposal, or treat a pending proposal as the published note. Those
 actions stay with a human in the hub.
+
+## Unified comments
+
+`comments.enabled` is a tenant opt-in. An agent must not turn it on or name
+`comments.admins`. The API is 404 while the flag is off. There is no comments
+UI yet.
+
+Proposed defaults, pending Charlie:
+
+- Agents and MCP callers may POST a comment. It is stored with
+  `author_kind: "agent"` and an agent name label. They cannot pin, unpin,
+  reorder or delete.
+- Pin, unpin and reorder are admin-only (`comments.admins` emails).
+- Delete is admin or the comment's own author, and person-only.
+
+Do not treat a comments document as a place for private reasoning, secrets,
+or raw customer data. The existing notes store stays in place until a human
+runs `scripts/migrate-notes-to-comments.mjs --apply` and chooses a cutover.

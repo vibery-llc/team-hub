@@ -40,6 +40,15 @@
  *   POST   /api/proposals                    agent proposes { page, body }
  *   POST   /api/proposals/approve?id=        human only — becomes the pinned note
  *   POST   /api/proposals/reject?id=         human only
+ *
+ *   GET    /api/comments?scope=&target_id=   thread for one target (404 if comments.enabled is off)
+ *   GET    /api/comments/pins?scope=&target_id=
+ *   POST   /api/comments                     { scope, target_id, body, parent_id? }
+ *   PATCH  /api/comments/{id}                author-only edit
+ *   DELETE /api/comments/{id}                soft delete
+ *   POST   /api/comments/{id}/pin
+ *   POST   /api/comments/{id}/unpin
+ *   POST   /api/comments/{id}/reorder        body: { order: [id, ...] }
  */
 
 import { accessIdentity } from "../_shared/access.js";
@@ -64,6 +73,28 @@ import {
   resolveFeedback,
   sortFeedback,
 } from "../_shared/collaborate.js";
+import {
+  addCommentToThread,
+  buildComment,
+  cleanScope,
+  cleanTargetId,
+  commentPolicy,
+  commentsConfig,
+  describeActor,
+  editCommentInThread,
+  findCommentLocation,
+  isCommentsStoreKey,
+  parseHubConfigSource,
+  pinCommentInThread,
+  pinnedComments,
+  presentComment,
+  readThread,
+  reorderPinsInThread,
+  softDeleteCommentInThread,
+  sortThreadComments,
+  unpinCommentInThread,
+  updateThread,
+} from "../_shared/comments.js";
 
 /** Top-level prefixes the API will touch. Anything else is rejected. */
 const AREAS = ["share", "builds", "meetings", "clips"];
@@ -247,6 +278,40 @@ async function listJson(bucket, prefix) {
 
 function refuseWrite(check) {
   return json({ error: check.error }, 403);
+}
+
+function refuseCommentsStore(raw) {
+  if (isCommentsStoreKey(raw)) return bad("comments/ is a reserved store", 403);
+  return null;
+}
+
+async function loadCommentsSettings(env, request) {
+  if (env.HUB_CONFIG && typeof env.HUB_CONFIG === "object") {
+    return commentsConfig(env.HUB_CONFIG);
+  }
+  try {
+    const url = new URL("/hub.config.js", request.url);
+    const res = env.ASSETS ? await env.ASSETS.fetch(new Request(url)) : await fetch(url);
+    if (!res.ok) return commentsConfig({});
+    return commentsConfig(parseHubConfigSource(await res.text()));
+  } catch {
+    return commentsConfig({});
+  }
+}
+
+function commentsActor(request, identity, body = {}) {
+  return describeActor(
+    browserWrite(request).ok,
+    identity,
+    body.agent_name || body.agent || request.headers.get("x-hub-agent") || "",
+  );
+}
+
+function threadQuery(url, body = {}) {
+  const scope = cleanScope(url.searchParams.get("scope") || body.scope);
+  const targetId = cleanTargetId(scope, url.searchParams.get("target_id") || body.target_id);
+  if (!scope || !targetId) return { error: "scope and target_id are required" };
+  return { scope, targetId };
 }
 
 function describe(obj) {
@@ -465,8 +530,136 @@ export async function onRequest(context) {
       } catch (err) { return bad(err.message); }
     }
 
+    // ---- comments ----------------------------------------------------------
+    if (route === "comments" || route === "comments/pins" || route.startsWith("comments/")) {
+      const settings = await loadCommentsSettings(env, request);
+      if (!settings.enabled) return bad("not found", 404);
+
+      if (route === "comments" && method === "GET") {
+        const loc = threadQuery(url);
+        if (loc.error) return bad(loc.error);
+        const { doc } = await readThread(bucket, loc.scope, loc.targetId);
+        return json({
+          scope: loc.scope,
+          target_id: loc.targetId,
+          comments: sortThreadComments(doc.comments).map(presentComment),
+        });
+      }
+
+      if (route === "comments/pins" && method === "GET") {
+        const loc = threadQuery(url);
+        if (loc.error) return bad(loc.error);
+        const { doc } = await readThread(bucket, loc.scope, loc.targetId);
+        return json({
+          scope: loc.scope,
+          target_id: loc.targetId,
+          pins: pinnedComments(doc.comments).map(presentComment),
+        });
+      }
+
+      if (route === "comments" && method === "POST") {
+        const gate = sameSiteWrite(request);
+        if (!gate.ok) return refuseWrite(gate);
+        let body;
+        try { body = await request.json(); } catch { return bad("bad json"); }
+        const actor = commentsActor(request, identity(), body);
+        const allowed = commentPolicy("create", { actor, settings });
+        if (!allowed.ok) return bad(allowed.error, allowed.status);
+        let comment;
+        try { comment = buildComment(body, actor); }
+        catch (err) { return bad(err.message); }
+        try {
+          const { doc } = await updateThread(bucket, comment.scope, comment.target_id, (current) => (
+            addCommentToThread(current, comment)
+          ));
+          const stored = doc.comments.find((item) => item.id === comment.id);
+          return json({ ok: true, comment: presentComment(stored) }, 201);
+        } catch (err) {
+          return bad(err.message, err.status || 400);
+        }
+      }
+
+      const parts = route.split("/");
+      const id = cleanId(parts[1]);
+      const action = parts[2] || "";
+      if (!id || parts[0] !== "comments" || parts.length > 3) return bad("no such route", 404);
+
+      if (method === "PATCH" && !action) {
+        const gate = sameSiteWrite(request);
+        if (!gate.ok) return refuseWrite(gate);
+        let body;
+        try { body = await request.json(); } catch { return bad("bad json"); }
+        const hint = threadQuery(url, body);
+        const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
+        if (!found) return bad("not found", 404);
+        const actor = commentsActor(request, identity(), body);
+        const allowed = commentPolicy("edit", { actor, comment: found.comment, settings });
+        if (!allowed.ok) return bad(allowed.error, allowed.status);
+        try {
+          const { doc } = await updateThread(bucket, found.comment.scope, found.comment.target_id, (current) => (
+            editCommentInThread(current, id, body?.body)
+          ));
+          return json({ ok: true, comment: presentComment(doc.comments.find((item) => item.id === id)) });
+        } catch (err) {
+          return bad(err.message, err.status || 400);
+        }
+      }
+
+      if (method === "DELETE" && !action) {
+        const gate = sameSiteWrite(request);
+        if (!gate.ok) return refuseWrite(gate);
+        const hint = threadQuery(url);
+        const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
+        if (!found) return bad("not found", 404);
+        const actor = commentsActor(request, identity());
+        const allowed = commentPolicy("delete", { actor, comment: found.comment, settings });
+        if (!allowed.ok) return bad(allowed.error, allowed.status);
+        try {
+          const { doc } = await updateThread(bucket, found.comment.scope, found.comment.target_id, (current) => (
+            softDeleteCommentInThread(current, id, actor)
+          ));
+          return json({ ok: true, comment: presentComment(doc.comments.find((item) => item.id === id)) });
+        } catch (err) {
+          return bad(err.message, err.status || 400);
+        }
+      }
+
+      if (method === "POST" && (action === "pin" || action === "unpin" || action === "reorder")) {
+        const gate = sameSiteWrite(request);
+        if (!gate.ok) return refuseWrite(gate);
+        let body = {};
+        if (action === "reorder") {
+          try { body = await request.json(); } catch { return bad("bad json"); }
+        }
+        const hint = threadQuery(url, body);
+        const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
+        if (!found) return bad("not found", 404);
+        const actor = commentsActor(request, identity(), body);
+        const allowed = commentPolicy(action, { actor, comment: found.comment, settings });
+        if (!allowed.ok) return bad(allowed.error, allowed.status);
+        try {
+          const { doc } = await updateThread(bucket, found.comment.scope, found.comment.target_id, (current) => {
+            if (action === "pin") return pinCommentInThread(current, id, actor);
+            if (action === "unpin") return unpinCommentInThread(current, id);
+            return reorderPinsInThread(current, body?.order);
+          });
+          return json({
+            ok: true,
+            comment: presentComment(doc.comments.find((item) => item.id === id)),
+            pins: pinnedComments(doc.comments).map(presentComment),
+          });
+        } catch (err) {
+          return bad(err.message, err.status || 400);
+        }
+      }
+
+      return bad("no such route", 404);
+    }
+
     // ---- listing -----------------------------------------------------------
     if (route === "files" && method === "GET") {
+      const reserved = refuseCommentsStore(url.searchParams.get("prefix") || "");
+      if (reserved) return reserved;
       const prefix = cleanPrefix(url.searchParams.get("prefix") || "share/");
       if (!prefix) return bad("bad prefix");
 
@@ -490,6 +683,8 @@ export async function onRequest(context) {
 
     // ---- single-shot upload -------------------------------------------------
     if (route === "files" && method === "POST") {
+      const reserved = refuseCommentsStore(url.searchParams.get("key") || "");
+      if (reserved) return reserved;
       const key = cleanKey(url.searchParams.get("key"));
       if (!key) return bad("bad key");
 
@@ -518,6 +713,8 @@ export async function onRequest(context) {
     }
 
     if (route === "files" && method === "DELETE") {
+      const reserved = refuseCommentsStore(url.searchParams.get("key") || "");
+      if (reserved) return reserved;
       const key = cleanKey(url.searchParams.get("key"));
       if (!key) return bad("bad key");
       await bucket.delete(key);
@@ -526,6 +723,8 @@ export async function onRequest(context) {
 
     // ---- download -----------------------------------------------------------
     if (route === "dl" && method === "GET") {
+      const reserved = refuseCommentsStore(url.searchParams.get("key") || "");
+      if (reserved) return reserved;
       const key = cleanKey(url.searchParams.get("key"));
       if (!key) return bad("bad key");
 
@@ -563,6 +762,8 @@ export async function onRequest(context) {
 
     // ---- multipart upload ---------------------------------------------------
     if (route === "mpu/create" && method === "POST") {
+      const reserved = refuseCommentsStore(url.searchParams.get("key") || "");
+      if (reserved) return reserved;
       const key = cleanKey(url.searchParams.get("key"));
       if (!key) return bad("bad key");
       if ((await bucket.head(key)) && !isMutableBuildManifest(key)) {
@@ -582,6 +783,8 @@ export async function onRequest(context) {
     }
 
     if (route === "mpu/part" && method === "PUT") {
+      const reserved = refuseCommentsStore(url.searchParams.get("key") || "");
+      if (reserved) return reserved;
       const key = cleanKey(url.searchParams.get("key"));
       const uploadId = url.searchParams.get("uploadId");
       const partNumber = Number(url.searchParams.get("part"));
@@ -595,6 +798,8 @@ export async function onRequest(context) {
     }
 
     if (route === "mpu/complete" && method === "POST") {
+      const reserved = refuseCommentsStore(url.searchParams.get("key") || "");
+      if (reserved) return reserved;
       const key = cleanKey(url.searchParams.get("key"));
       const uploadId = url.searchParams.get("uploadId");
       if (!key || !uploadId) return bad("bad key or uploadId");
@@ -612,6 +817,8 @@ export async function onRequest(context) {
     }
 
     if (route === "mpu/abort" && method === "DELETE") {
+      const reserved = refuseCommentsStore(url.searchParams.get("key") || "");
+      if (reserved) return reserved;
       const key = cleanKey(url.searchParams.get("key"));
       const uploadId = url.searchParams.get("uploadId");
       if (!key || !uploadId) return bad("bad key or uploadId");
