@@ -3,7 +3,7 @@
  *
  * Pure ESM. Do not import Access, identity.js, hub.config, or anything
  * else outside this folder. Callers inject
- * { bucket, identity:{id,email,kind,via}, config:{admins,limits}, now }.
+ * { bucket, identity:{id,email,kind,via,idp}, config:{admins,adminIdps,limits}, now }.
  */
 
 export {

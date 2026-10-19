@@ -54,10 +54,11 @@ function topLevel(body = "Welcome home", extra = {}) {
 }
 
 test("commentsConfig is off until a human sets enabled, and admins are lowercased", () => {
-  assert.deepEqual(commentsConfig({}), { enabled: false, admins: [], limits: LIMITS });
+  assert.deepEqual(commentsConfig({}), { enabled: false, admins: [], adminIdps: ["github"], limits: LIMITS });
   assert.deepEqual(commentsConfig({ comments: { enabled: false, admins: ["Admin@Example.com"] } }), {
     enabled: false,
     admins: ["admin@example.com"],
+    adminIdps: ["github"],
     limits: LIMITS,
   });
   assert.equal(commentsConfig({ comments: { enabled: true } }).enabled, true);
@@ -187,7 +188,7 @@ test("parseHubConfigSource reads the tenant file's HUB_CONFIG assignment", () =>
 test("shipped hub.config.js keeps comments off and admins empty", () => {
   const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../site/hub.config.js"), "utf8");
   const config = parseHubConfigSource(source);
-  assert.deepEqual(commentsConfig(config), { enabled: false, admins: [], limits: LIMITS });
+  assert.deepEqual(commentsConfig(config), { enabled: false, admins: [], adminIdps: ["github"], limits: LIMITS });
 });
 
 test("isCommentsStoreKey refuses the comments/ prefix the file API must not touch", () => {

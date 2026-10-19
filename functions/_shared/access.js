@@ -117,3 +117,56 @@ export async function accessIdentity(request, env, deps = {}) {
     return { ok: false, status: 403, error: `Cloudflare Access token rejected: ${err.message}` };
   }
 }
+
+const GET_IDENTITY_TIMEOUT_MS = 3000;
+
+function cookieValue(request, name) {
+  const raw = request?.headers?.get?.("Cookie") || "";
+  for (const part of raw.split(";")) {
+    const at = part.indexOf("=");
+    if (at > 0 && part.slice(0, at).trim() === name) return part.slice(at + 1).trim();
+  }
+  return "";
+}
+
+/**
+ * Which identity provider the person signed in through ("github", "google", "onetimepin", ...),
+ * lower-cased, or "" when it can't be determined.
+ *
+ * The Access JWT does not name the provider, so this asks Access itself: GET
+ * /cdn-cgi/access/get-identity on the request's own host, carrying the CF_Authorization cookie
+ * (or, failing that, the same JWT from Cf-Access-Jwt-Assertion). Access answers with
+ * `idp: { id, type }`.
+ *
+ * Fails closed for the comments admin check: "" when Access isn't configured here (the JWT was
+ * never verified, so nothing it says is trusted), when there is no token, when the lookup errors,
+ * times out or isn't JSON, and when the identity Access returns names a different email than the
+ * verified JWT. Call it only after accessIdentity() succeeded. `deps` exists for tests:
+ * { fetchIdentity, email }.
+ */
+export async function accessIdp(request, env, deps = {}) {
+  const teamDomain = String(env?.ACCESS_TEAM_DOMAIN || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const aud = String(env?.ACCESS_AUD || "");
+  if (!teamDomain || !aud) return "";
+
+  const token = cookieValue(request, "CF_Authorization") || request.headers.get("Cf-Access-Jwt-Assertion") || "";
+  if (!token) return "";
+
+  const load = deps.fetchIdentity || fetch;
+  try {
+    const url = new URL("/cdn-cgi/access/get-identity", request.url);
+    const init = { headers: { Cookie: `CF_Authorization=${token}`, Accept: "application/json" } };
+    if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) init.signal = AbortSignal.timeout(GET_IDENTITY_TIMEOUT_MS);
+    const res = await load(url.toString(), init);
+    if (!res || !res.ok) return "";
+    const body = await res.json();
+    const type = typeof body?.idp?.type === "string" ? body.idp.type.trim().toLowerCase() : "";
+    if (!type) return "";
+    const expected = String(deps.email || "").trim().toLowerCase();
+    const got = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (expected && got !== expected) return "";
+    return type;
+  } catch {
+    return "";
+  }
+}

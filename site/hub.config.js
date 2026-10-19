@@ -180,8 +180,11 @@ globalThis.HUB_CONFIG = {
        human or via is mcp) but cannot pin, unpin, reorder or delete;
        pin, unpin and reorder are admin-only;
        delete is admin or the comment's author, and person-only.
-     `admins` is a list of emails (hub owner only to start). The server
-     also merges HUB_ADMINS (comma-separated emails) from wrangler/env.
+     Admins (Oct 19): anyone who signs in through GitHub, plus the emails
+     in `admins` merged with HUB_ADMINS (comma-separated) from wrangler/env,
+     the allowlist for non-developers who sign in through Google or an
+     email code. The provider is read from Access (get-identity); unknown
+     means not a GitHub admin.
      That is app config only; Access is unchanged. Body is 8000
      characters; a pinned top-level comment may be 256 KiB, but only a
      human browser admin or author may use that budget on edit. */

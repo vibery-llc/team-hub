@@ -55,6 +55,18 @@ test("admins match email only", () => {
   assert.equal(isAdmin(HUMAN, CONFIG), false);
 });
 
+test("adminIdps: a GitHub sign-in is admin; unknown or other providers fall back to the email list", () => {
+  const config = { ...CONFIG, adminIdps: ["github"] };
+  assert.equal(isAdmin({ ...HUMAN, idp: "github" }, config), true);
+  assert.equal(isAdmin({ ...HUMAN, idp: "GitHub" }, config), true);
+  assert.equal(isAdmin({ ...HUMAN, idp: "google" }, config), false);
+  assert.equal(isAdmin({ ...HUMAN, idp: "onetimepin" }, config), false);
+  assert.equal(isAdmin({ ...HUMAN, idp: "" }, config), false);
+  assert.equal(isAdmin({ ...HUMAN, idp: "github" }, CONFIG), false, "no adminIdps configured");
+  assert.equal(isAdmin({ id: "svc:client", email: "", idp: "github" }, config), false, "needs an email");
+  assert.equal(isAdmin({ id: "admin@example.com", email: "admin@example.com", idp: "google" }, config), true);
+});
+
 test("a reply or unpinned comment over 8000 chars is 413; a pinned top-level may be 256 KiB", () => {
   const over = "x".repeat(8001);
   assert.throws(() => assertBodySize(over, { pinned: false }, CONFIG), { status: 413 });

@@ -2,9 +2,12 @@
  * Locked by Charlie Oct 19. Identity and admins are injected; this file
  * never reads Access, env, or hub.config itself.
  *
- * Admins are emails only. github:login is ignored here; wiring that up
- * is a separate future PR. The identity bag is currently email-only
- * plus an optional service-token id (svc:<id>).
+ * Admin model (Charlie, Oct 19): isAdmin = signed in through an admin
+ * identity provider (config.adminIdps, ["github"] on team-hub) OR the
+ * email is on config.admins. The identity bag carries `idp`, the
+ * provider type the caller resolved for this request; "" when it could
+ * not be determined, which never grants admin (fail closed). Admin
+ * entries are emails only; github:login entries are ignored.
  */
 
 import { hasWriteIdentity, isHumanAuthor, isRestrictedCaller, isSystemComment, usableActor } from "./util.js";
@@ -13,7 +16,17 @@ function norm(value) {
   return usableActor(value).toLowerCase();
 }
 
+function adminByIdp(identity, config) {
+  const idp = String(identity?.idp || "").trim().toLowerCase();
+  if (!idp) return false;
+  /* A provider login is a person's login: it needs a usable email too. */
+  if (!norm(identity?.email)) return false;
+  const idps = Array.isArray(config?.adminIdps) ? config.adminIdps : [];
+  return idps.some((entry) => String(entry || "").trim().toLowerCase() === idp);
+}
+
 export function isAdmin(identity, config) {
+  if (adminByIdp(identity, config)) return true;
   const admins = config?.admins || [];
   const email = norm(identity?.email);
   const id = norm(identity?.id);

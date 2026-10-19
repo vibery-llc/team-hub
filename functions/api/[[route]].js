@@ -51,7 +51,7 @@
  *   POST   /api/comments/{id}/reorder        body: { order: [id, ...] }
  */
 
-import { accessIdentity } from "../_shared/access.js";
+import { accessIdentity, accessIdp } from "../_shared/access.js";
 import { browserWrite, sameSiteWrite } from "../_shared/origin.js";
 import {
   FEEDBACK_PREFIX,
@@ -529,11 +529,14 @@ export async function onRequest(context) {
       const settings = await loadCommentsSettings(env, request);
       if (!settings.enabled) return bad("not found", 404);
       const clientId = accessClientId(request, env);
+      /* GitHub sign-ins are admins. Access's JWT doesn't name the provider, so ask Access
+         (get-identity). Unknown => "" => not admin by provider (fail closed). */
+      const idp = await accessIdp(request, env, { email: access.email });
 
       if (route === "comments" && method === "GET") {
         const loc = threadQuery(url);
         if (loc.error) return bad(loc.error);
-        const viewer = commentsIdentity(request, access.email, { clientId });
+        const viewer = commentsIdentity(request, access.email, { clientId, idp });
         const { doc } = await readThread(bucket, loc.scope, loc.targetId);
         return json({
           scope: loc.scope,
@@ -546,7 +549,7 @@ export async function onRequest(context) {
       if (route === "comments/pins" && method === "GET") {
         const loc = threadQuery(url);
         if (loc.error) return bad(loc.error);
-        const viewer = commentsIdentity(request, access.email, { clientId });
+        const viewer = commentsIdentity(request, access.email, { clientId, idp });
         const { doc } = await readThread(bucket, loc.scope, loc.targetId);
         return json({
           scope: loc.scope,
@@ -562,6 +565,7 @@ export async function onRequest(context) {
         let body;
         try { body = await request.json(); } catch { return bad("bad json"); }
         const viewer = commentsIdentity(request, access.email, {
+          idp,
           clientId,
           agentName: body.agent_name || body.agent || request.headers.get("x-hub-agent") || "",
         });
@@ -599,6 +603,7 @@ export async function onRequest(context) {
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
         const viewer = commentsIdentity(request, access.email, {
+          idp,
           clientId,
           agentName: body.agent_name || body.agent || request.headers.get("x-hub-agent") || "",
         });
@@ -621,7 +626,7 @@ export async function onRequest(context) {
         const hint = threadQuery(url);
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
-        const viewer = commentsIdentity(request, access.email, { clientId });
+        const viewer = commentsIdentity(request, access.email, { clientId, idp });
         const allowed = commentPolicy("delete", { identity: viewer, comment: found.comment, config: settings });
         if (!allowed.ok) return bad(allowed.error, allowed.status);
         try {
@@ -644,7 +649,7 @@ export async function onRequest(context) {
         const hint = threadQuery(url, body);
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
-        const viewer = commentsIdentity(request, access.email, { clientId });
+        const viewer = commentsIdentity(request, access.email, { clientId, idp });
         const allowed = commentPolicy(action, { identity: viewer, comment: found.comment, config: settings });
         if (!allowed.ok) return bad(allowed.error, allowed.status);
         try {

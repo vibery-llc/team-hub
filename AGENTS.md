@@ -56,9 +56,14 @@ Locked by Charlie Oct 19:
   `author_kind: "agent"` (when `kind !== "human"` or `via === "mcp"`) plus
   `via` and an agent name label. They cannot pin, unpin, reorder or delete.
   There is no proposed flag: agents post directly.
-- Pin, unpin and reorder are admin-only. Admins are `comments.admins`
-  merged with the server-side `HUB_ADMINS` env var (comma-separated emails,
-  hub owner only to start). This is app config only; Access is unchanged.
+- Pin, unpin and reorder are admin-only. Admin model (Charlie, Oct 19):
+  `isAdmin = signedInViaGitHub || HUB_ADMINS.includes(email)`. Anyone who
+  signs in to Access through GitHub is an admin. `HUB_ADMINS` (server-side
+  env var, comma-separated emails, merged with `comments.admins`) is the
+  allowlist for extra non-developer admins (Google, email-code logins). The
+  provider comes from Access's `/cdn-cgi/access/get-identity`; if it can't be
+  determined the person is not a GitHub admin (fail closed). This is app
+  config only; Access is unchanged.
   An agent must not set `HUB_ADMINS` or name `comments.admins`. Do not
   commit real emails; use the placeholder in `wrangler.toml`.
 - Delete is admin or the comment's own author, and person-only.

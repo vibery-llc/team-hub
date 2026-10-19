@@ -66,10 +66,19 @@ function emailAdmins(entries) {
     .filter((entry) => entry.includes("@"));
 }
 
-/** Comma-separated emails from HUB_ADMINS. github:login is ignored (future PR). */
+/**
+ * Comma-separated emails from HUB_ADMINS: the allowlist of extra (non-GitHub) admins. GitHub
+ * sign-ins are admins already (ADMIN_IDPS). github:login entries are ignored.
+ */
 export function parseHubAdmins(raw) {
   return emailAdmins(String(raw ?? "").split(","));
 }
+
+/**
+ * Identity providers whose sign-ins are hub admins by default (Charlie, Oct 19): developers sign
+ * in through GitHub and are admins; HUB_ADMINS / comments.admins whitelist anyone else.
+ */
+export const ADMIN_IDPS = Object.freeze(["github"]);
 
 export function commentsConfig(config, envAdmins) {
   const raw = config?.comments || {};
@@ -79,6 +88,7 @@ export function commentsConfig(config, envAdmins) {
   return {
     enabled: raw.enabled === true,
     admins,
+    adminIdps: [...ADMIN_IDPS],
     limits: {
       body: COMMENT_BODY_MAX,
       pinnedBody: COMMENT_PINNED_BODY_MAX,
@@ -122,7 +132,8 @@ export function accessClientId(request, env) {
  * Browser same-site => kind human, via browser. Anything else (MCP, curl)
  * => via mcp. No email and no service-token id => empty id (writes 403).
  * extra.env is the Functions env; common_name is ignored unless Access
- * is configured there (see accessClientId).
+ * is configured there (see accessClientId). extra.idp is the identity
+ * provider type from accessIdp(); "" (unknown) never grants admin.
  */
 export function commentsIdentity(request, email, extra = {}) {
   const browser = browserWrite(request).ok;
@@ -140,6 +151,7 @@ export function commentsIdentity(request, email, extra = {}) {
     kind,
     via,
     label,
+    idp: actorEmail ? String(extra.idp || "").trim().toLowerCase() : "",
   };
 }
 
