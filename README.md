@@ -491,7 +491,7 @@ bounded retry. The file API refuses the `comments/` prefix.
 The store and policy live in `functions/_shared/hub-comments/`, a vendorable
 folder with no imports outside itself. Routes and identity glue stay in
 `functions/api/` and `functions/_shared/comments.js`. Callers inject
-`{ bucket, identity: { id, email, kind, via }, config: { admins, limits }, now }`.
+`{ bucket, identity: { id, email, kind, via, idp }, config: { admins, adminIdps, limits }, now }`.
 The same core is meant to land in compass-city-hub and kf-hub.
 
 Locked by Charlie Oct 19: agents may POST a comment (stored with
@@ -501,11 +501,40 @@ reorder are admin-only; delete is admin or the author, and person-only.
 The stored comment keeps `via`. The API refuses pin, unpin, reorder and
 delete for `via=mcp` or a non-human kind.
 
-Admins are emails in `comments.admins`, merged with the server-side
-`HUB_ADMINS` env var (comma-separated emails). Start with the hub owner
-only. This is app config only; Access is unchanged. Document `HUB_ADMINS`
-in `wrangler.toml` `[vars]` with a placeholder, never a real email.
-`github:login` entries are ignored; supporting GitHub logins is a later PR.
+**Who is an admin** (Charlie, Oct 19: developers are admins by default and
+may whitelist non-developers):
+
+```
+isAdmin = signedInViaGitHub || HUB_ADMINS.includes(email)
+```
+
+- Anyone who signs in to Access through the **GitHub** identity provider is
+  a hub admin.
+- `HUB_ADMINS` (server-side env var, comma-separated emails, merged with
+  `comments.admins` in `hub.config.js`) is the allowlist of extra admins
+  who sign in another way (Google Workspace, email one-time code). Matching
+  is case-insensitive. `github:login` entries are ignored.
+- Everyone else is a normal user: they can comment and edit or delete their
+  own comments, but cannot pin, unpin, reorder, delete other people's
+  comments, or edit (approve edits to) someone else's pinned comment.
+- Agents and MCP callers stay bot-labeled add/list only, whatever provider
+  their person signed in with: admin rights need a same-site human browser.
+
+The Access JWT does not say which identity provider was used, so the
+Functions ask Access: `GET /cdn-cgi/access/get-identity` on the hub's own
+host, with the `CF_Authorization` cookie (or the `Cf-Access-Jwt-Assertion`
+token), and read `idp.type === "github"` (`accessIdp()` in
+`functions/_shared/access.js`). It runs only on comments routes, only when
+the flag is on and Access is configured (`ACCESS_TEAM_DOMAIN` and
+`ACCESS_AUD`), and only after the JWT has been verified. It **fails
+closed**: a lookup that errors, times out, is not JSON, has no `idp`, or
+names a different email than the verified JWT counts as "not GitHub", so
+the person is an admin only if `HUB_ADMINS` lists them. Without Access
+configured (`wrangler pages dev`) nobody is a GitHub admin.
+
+This is app config only; Cloudflare Access policies are unchanged. Keep the
+`wrangler.toml` entry a placeholder in this repo and set the real value per
+deployment.
 
 Bodies are 8000 characters by default. A pinned top-level comment may be up
 to 256 KiB so a long service note can migrate losslessly. Editing at that
