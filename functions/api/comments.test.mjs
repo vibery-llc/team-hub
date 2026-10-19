@@ -385,7 +385,7 @@ test("a caller with no email cannot edit or delete, even with a forged Origin", 
   assert.equal(listed.comments[0].body, "Welcome home");
 });
 
-test("a service-token common_name becomes author svc:<id> with author_kind agent", async () => {
+test("a service-token common_name is ignored when Access is not configured", async () => {
   const bucket = memoryBucket();
   const created = await api(bucket, "https://hub.example/api/comments", {
     method: "POST",
@@ -393,11 +393,7 @@ test("a service-token common_name becomes author svc:<id> with author_kind agent
     extraHeaders: { "Cf-Access-Jwt-Assertion": unsignedJwt({ common_name: "client-id.access" }) },
     body: { scope: "home", target_id: "home", body: "from a token" },
   });
-  assert.equal(created.status, 201);
-  const { comment } = await created.json();
-  assert.equal(comment.author, "svc:client-id.access");
-  assert.equal(comment.author_kind, "agent");
-  assert.equal(comment.via, "mcp");
+  assert.equal(created.status, 403);
 });
 
 test("unpin of a pinned body over 8000 is 409 and asks to trim first", async () => {

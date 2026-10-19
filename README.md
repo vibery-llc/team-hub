@@ -508,17 +508,25 @@ in `wrangler.toml` `[vars]` with a placeholder, never a real email.
 `github:login` entries are ignored; supporting GitHub logins is a later PR.
 
 Bodies are 8000 characters by default. A pinned top-level comment may be up
-to 256 KiB so a long service note can migrate losslessly. A reply or
-unpinned comment over 8000 gets `413`. Unpinning a body over 8000 is `409`
-until the body is trimmed. Each comment has `rev` (a per-comment
-revision string, `"1"` on create, seeded from the legacy etag on
-migration, bumped on a body edit), `edited_by` and `proposal_id` (nullable)
-so a later note proposal can target a pinned comment without a reply
-marking it superseded.
+to 256 KiB so a long service note can migrate losslessly. Editing at that
+size needs a human browser caller who is an admin or the author; any
+other caller, including an admin via MCP, stays at 8000 and gets `413`
+above that. A reply or unpinned comment over 8000 gets `413`. Unpinning
+a body over 8000 is `409` until the body is trimmed. Each comment has
+`rev` (a per-comment revision string, `"1"` on create, seeded from the
+legacy etag on migration, bumped on a body edit), `edited_by` and
+`proposal_id` (nullable) so a later note proposal can target a pinned
+comment without a reply marking it superseded.
 
 A pinned comment's body is edited directly only by an admin or its author.
 Everyone else must propose. Approve is a later slice; the API refuses the
 direct edit and `can_edit` matches.
+
+Access (`access.js`) only returns email. A service-token JWT has no
+email; its stable id is `common_name`. The comments glue reads that
+claim only when Access is configured (`ACCESS_TEAM_DOMAIN` and
+`ACCESS_AUD` both set). Otherwise the JWT was never verified and
+`common_name` is ignored.
 
 List and pins responses include `author_kind`, `author_label`, `via`,
 `rev`, `edited_by`, `proposal_id`, an optional plain-text `quote` (max 500),

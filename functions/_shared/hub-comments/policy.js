@@ -7,7 +7,7 @@
  * plus an optional service-token id (svc:<id>).
  */
 
-import { hasWriteIdentity, isRestrictedCaller, isSystemComment, usableActor } from "./util.js";
+import { hasWriteIdentity, isHumanAuthor, isRestrictedCaller, isSystemComment, usableActor } from "./util.js";
 
 function norm(value) {
   return usableActor(value).toLowerCase();
@@ -30,6 +30,11 @@ function sameAuthor(identity, comment) {
   const author = norm(comment?.author);
   if (!author || (!email && !id)) return false;
   return author === email || author === id;
+}
+
+/** 256 KiB on a pinned edit: human browser, and admin or author. */
+export function allowPinnedBodyBudget(identity, comment, config) {
+  return isHumanAuthor(identity) && (isAdmin(identity, config) || sameAuthor(identity, comment));
 }
 
 /**

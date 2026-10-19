@@ -35,6 +35,7 @@ export {
 } from "./util.js";
 
 export {
+  allowPinnedBodyBudget,
   capabilitiesFor,
   commentPolicy,
   isAdmin,

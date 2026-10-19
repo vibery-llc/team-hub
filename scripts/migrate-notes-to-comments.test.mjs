@@ -36,7 +36,7 @@ test("team-hub notes map index/home to scope=home and other pages to scope=page"
   const homeBody = "Welcome home\nKeep this newline.\n";
   await seedNote(source, "index", homeBody);
   await seedNote(source, "meetings", "Do not publish the full recording.");
-  const adapter = teamHubNotesAdapter({ pinOrder: pinOrderFromConfig(CONFIG) });
+  const adapter = teamHubNotesAdapter();
   const notes = await adapter.listNotes(source);
   const mapped = notes.map((note) => adapter.mapNote(note));
   const home = mapped.find((item) => item.repo_key === "notes/pages/index.json");
@@ -61,7 +61,7 @@ test("dry-run reports byte-identical bodies and writes nothing", async () => {
   const body = "Welcome home\nKeep this newline.\n";
   await seedNote(source, "index", body);
   const report = await migrateNotes({
-    adapter: teamHubNotesAdapter({ pinOrder: ["index"] }),
+    adapter: teamHubNotesAdapter(),
     source,
     dest,
     apply: false,
@@ -83,7 +83,7 @@ test("apply writes one comment per note and never touches old note keys", async 
   await seedNote(bucket, "meetings", "Clips only.");
 
   const report = await migrateNotes({
-    adapter: teamHubNotesAdapter({ pinOrder: pinOrderFromConfig(CONFIG) }),
+    adapter: teamHubNotesAdapter(),
     source: bucket,
     dest: bucket,
     apply: true,
@@ -106,7 +106,7 @@ test("apply writes one comment per note and never touches old note keys", async 
 test("apply is idempotent: a note whose legacy.repo_key already exists is skipped", async () => {
   const bucket = memoryBucket();
   await seedNote(bucket, "index", "Welcome home");
-  const adapter = teamHubNotesAdapter({ pinOrder: ["index"] });
+  const adapter = teamHubNotesAdapter();
   await migrateNotes({ adapter, source: bucket, dest: bucket, apply: true, now: NOW });
   const again = await migrateNotes({ adapter, source: bucket, dest: bucket, apply: true, now: NOW });
   assert.equal(again.items[0].action, "skip-existing");
@@ -123,7 +123,7 @@ test("migrated comments seed rev from the legacy etag and keep a long pinned bod
   await seedNote(source, "index", body);
   const got = await source.get(noteKey("index"));
   const report = await migrateNotes({
-    adapter: teamHubNotesAdapter({ pinOrder: ["index"] }),
+    adapter: teamHubNotesAdapter(),
     source,
     dest,
     apply: true,
@@ -143,7 +143,7 @@ test("a note with no author becomes legacy/system", async () => {
   const dest = memoryBucket();
   await seedNote(source, "index", "Welcome home", "");
   const report = await migrateNotes({
-    adapter: teamHubNotesAdapter({ pinOrder: ["index"] }),
+    adapter: teamHubNotesAdapter(),
     source,
     dest,
     apply: true,
@@ -162,7 +162,7 @@ test("a note over 256 KiB of non-ASCII text is invalid and does not crash", asyn
   assert.ok(Buffer.byteLength(body, "utf8") > 256 * 1024);
   await seedNote(source, "index", body);
   const report = await migrateNotes({
-    adapter: teamHubNotesAdapter({ pinOrder: ["index"] }),
+    adapter: teamHubNotesAdapter(),
     source,
     dest,
     apply: true,
