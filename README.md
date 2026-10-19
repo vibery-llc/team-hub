@@ -28,6 +28,7 @@ That is usually five SaaS subscriptions and a Slack channel. This is one repo.
 | **Activity (optional)** | Human-owned, agent-friendly workstream updates that stay concise and point to the true project records; absent until a human opts in |
 | **Feedback (optional)** | A claimable queue of page-scoped items with a comment thread; absent from the nav until a human opts in |
 | **Pinned notes (optional)** | A note on each page. Agents may propose an update; a human must approve it before it is pinned |
+| **Comments (optional, no UI yet)** | Unified threads on a page, a service, or home. A comment can be pinned. Off until a human sets `comments.enabled` |
 | **Setup / Guide / Resources** | Onboarding pages your team owns. Setup is a real agent-install walkthrough; the other two ship as examples to replace |
 | **MCP server** | The hub itself is an MCP server, so an agent in your repo can read meetings, action items and the ticket queue instead of a human relaying them |
 
@@ -149,7 +150,7 @@ Two things:
 - **`site/hub.config.js`** — one commented file. Org, site name, nav, repo,
   tracker, phase plan, dashboard links, agent prompt templates, the optional
   Unity `game` block, the optional activity-log opt-in, and the optional
-  feedback-queue and pinned-notes flags.
+  feedback-queue, pinned-notes and comments flags.
 - **`site/brand/`** — `mark.png` plus `mark-32.png` and `mark-64.png`.
 
 That is the whole of "who this hub belongs to". Everything else is generic.
@@ -240,13 +241,14 @@ site/                 what deploys — plain files, no build
   feedback.html       optional claimable queue (opt-in via hub.config.js)
   meetings/           one JSON per meeting + transcripts
 functions/            Pages Functions — AT THE PROJECT ROOT, see below
-  api/                R2 file store, usage, feedback, notes, proposals
+  api/                R2 file store, usage, feedback, notes, proposals, comments
   mcp/                MCP server over Streamable HTTP
 scripts/
   init.mjs            first-run setup
   fetch-data.mjs      refresh data.json from GitHub + the tracker
   add-activity.mjs    append a validated update after human opt-in
   publish-build.mjs   upload a locally-built artifact to builds/<platform>/
+  migrate-notes-to-comments.mjs  dry-run mapper from notes/pages onto comments/
 ```
 
 **`functions/` is at the project root on purpose.** With
@@ -458,6 +460,7 @@ gate as the file store.
 ```js
 feedback: { enabled: true },
 notes: { enabled: true },
+comments: { enabled: false, admins: [] },
 ```
 
 **Feedback.** A claimable queue of items scoped to a hub page (`index`,
@@ -478,6 +481,27 @@ when `Origin`, `Referer` or `Sec-Fetch-Site` names a different host. A
 signed-in person who also has another site open cannot be made to pin a
 note or file feedback from that other origin. Read tools and headerless
 same-site callers (MCP, `cloudflared access curl`) still work.
+
+**Unified comments** sit behind `comments.enabled` (off by default) and have
+no UI yet. One JSON document per `{scope, target_id}` lives at
+`comments/{scope}/{target_id}.json`. Writes are etag-conditional with a
+bounded retry. The file API refuses the `comments/` prefix.
+
+Proposed defaults, pending Charlie: agents may POST a comment (stored with
+`author_kind: "agent"`) but cannot pin, unpin, reorder or delete; pin/unpin/
+reorder are admin-only; delete is admin or the author, and person-only.
+Admins are the emails in `comments.admins`.
+
+To preview mapping today's page notes onto that store:
+
+```bash
+node scripts/migrate-notes-to-comments.mjs --source-dir=./r2-dump
+```
+
+Dry-run is the default. `--apply` writes comment documents only. It never
+writes or deletes `notes/` keys. A later compass-city-hub adapter
+(`notes/*.md`, `service-YYYY-MM-DD.md` becoming `scope=service`) is stubbed
+in the same script.
 
 Agents must not turn these flags on, and must not treat a pending proposal
 as published. See `AGENTS.md`.
