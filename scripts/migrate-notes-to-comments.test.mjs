@@ -113,6 +113,28 @@ test("apply is idempotent: a note whose legacy.repo_key already exists is skippe
   assert.equal(home.doc.comments.length, 1);
 });
 
+test("migrated comments seed rev from the legacy etag and keep a long pinned body", async () => {
+  const source = memoryBucket();
+  const dest = memoryBucket();
+  const body = "N".repeat(12_000);
+  await seedNote(source, "index", body);
+  const got = await source.get(noteKey("index"));
+  const report = await migrateNotes({
+    adapter: teamHubNotesAdapter({ pinOrder: ["index"] }),
+    source,
+    dest,
+    apply: true,
+    now: NOW,
+  });
+  assert.equal(report.items[0].byteIdentical, true);
+  assert.equal(report.items[0].truncated, false);
+  const home = await readThread(dest, "home", "home");
+  assert.equal(home.doc.comments[0].body, body);
+  assert.equal(home.doc.comments[0].rev, got.httpEtag);
+  assert.equal(home.doc.comments[0].edited_by, null);
+  assert.equal(home.doc.comments[0].proposal_id, null);
+});
+
 test("compass stub: a long service note becomes one pinned service comment", async () => {
   const source = memoryBucket();
   const dest = memoryBucket();

@@ -80,7 +80,7 @@ import {
   cleanTargetId,
   commentPolicy,
   commentsConfig,
-  describeActor,
+  commentsIdentity,
   editCommentInThread,
   findCommentLocation,
   isCommentsStoreKey,
@@ -287,25 +287,17 @@ function refuseCommentsStore(raw) {
 }
 
 async function loadCommentsSettings(env, request) {
+  let hub = {};
   if (env.HUB_CONFIG && typeof env.HUB_CONFIG === "object") {
-    return commentsConfig(env.HUB_CONFIG);
+    hub = env.HUB_CONFIG;
+  } else {
+    try {
+      const url = new URL("/hub.config.js", request.url);
+      const res = env.ASSETS ? await env.ASSETS.fetch(new Request(url)) : await fetch(url);
+      if (res.ok) hub = parseHubConfigSource(await res.text()) || {};
+    } catch { /* flag stays off */ }
   }
-  try {
-    const url = new URL("/hub.config.js", request.url);
-    const res = env.ASSETS ? await env.ASSETS.fetch(new Request(url)) : await fetch(url);
-    if (!res.ok) return commentsConfig({});
-    return commentsConfig(parseHubConfigSource(await res.text()));
-  } catch {
-    return commentsConfig({});
-  }
-}
-
-function commentsActor(request, identity, body = {}) {
-  return describeActor(
-    browserWrite(request).ok,
-    identity,
-    body.agent_name || body.agent || request.headers.get("x-hub-agent") || "",
-  );
+  return commentsConfig(hub, env.HUB_ADMINS);
 }
 
 function threadQuery(url, body = {}) {
@@ -539,26 +531,26 @@ export async function onRequest(context) {
       if (route === "comments" && method === "GET") {
         const loc = threadQuery(url);
         if (loc.error) return bad(loc.error);
-        const actor = commentsActor(request, identity());
+        const viewer = commentsIdentity(request, identity());
         const { doc } = await readThread(bucket, loc.scope, loc.targetId);
         return json({
           scope: loc.scope,
           target_id: loc.targetId,
-          viewer: viewerFor(actor, settings),
-          comments: sortThreadComments(doc.comments).map((item) => presentComment(item, actor, settings)),
+          viewer: viewerFor(viewer, settings),
+          comments: sortThreadComments(doc.comments).map((item) => presentComment(item, viewer, settings)),
         });
       }
 
       if (route === "comments/pins" && method === "GET") {
         const loc = threadQuery(url);
         if (loc.error) return bad(loc.error);
-        const actor = commentsActor(request, identity());
+        const viewer = commentsIdentity(request, identity());
         const { doc } = await readThread(bucket, loc.scope, loc.targetId);
         return json({
           scope: loc.scope,
           target_id: loc.targetId,
-          viewer: viewerFor(actor, settings),
-          pins: pinnedComments(doc.comments).map((item) => presentComment(item, actor, settings)),
+          viewer: viewerFor(viewer, settings),
+          pins: pinnedComments(doc.comments).map((item) => presentComment(item, viewer, settings)),
         });
       }
 
@@ -567,18 +559,24 @@ export async function onRequest(context) {
         if (!gate.ok) return refuseWrite(gate);
         let body;
         try { body = await request.json(); } catch { return bad("bad json"); }
-        const actor = commentsActor(request, identity(), body);
-        const allowed = commentPolicy("create", { actor, settings });
+        const viewer = commentsIdentity(request, identity(), {
+          agentName: body.agent_name || body.agent || request.headers.get("x-hub-agent") || "",
+        });
+        const allowed = commentPolicy("create", { identity: viewer, config: settings });
         if (!allowed.ok) return bad(allowed.error, allowed.status);
         let comment;
-        try { comment = buildComment(body, actor); }
-        catch (err) { return bad(err.message); }
+        try { comment = buildComment(body, { identity: viewer, config: settings }); }
+        catch (err) { return bad(err.message, err.status || 400); }
+        if (comment.pinned) {
+          const pinAllowed = commentPolicy("pin", { identity: viewer, comment, config: settings });
+          if (!pinAllowed.ok) return bad(pinAllowed.error, pinAllowed.status);
+        }
         try {
-          const { doc } = await updateThread(bucket, comment.scope, comment.target_id, (current) => (
+          const { doc } = await updateThread({ bucket }, comment.scope, comment.target_id, (current) => (
             addCommentToThread(current, comment)
           ));
           const stored = doc.comments.find((item) => item.id === comment.id);
-          return json({ ok: true, comment: presentComment(stored, actor, settings) }, 201);
+          return json({ ok: true, comment: presentComment(stored, viewer, settings) }, 201);
         } catch (err) {
           return bad(err.message, err.status || 400);
         }
@@ -597,15 +595,17 @@ export async function onRequest(context) {
         const hint = threadQuery(url, body);
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
-        const actor = commentsActor(request, identity(), body);
-        const allowed = commentPolicy("edit", { actor, comment: found.comment, settings });
+        const viewer = commentsIdentity(request, identity(), {
+          agentName: body.agent_name || body.agent || request.headers.get("x-hub-agent") || "",
+        });
+        const allowed = commentPolicy("edit", { identity: viewer, comment: found.comment, config: settings });
         if (!allowed.ok) return bad(allowed.error, allowed.status);
         try {
           const extra = Object.hasOwn(body || {}, "quote") ? { quote: body.quote } : {};
-          const { doc } = await updateThread(bucket, found.comment.scope, found.comment.target_id, (current) => (
-            editCommentInThread(current, id, body?.body, new Date(), extra)
+          const { doc } = await updateThread({ bucket }, found.comment.scope, found.comment.target_id, (current) => (
+            editCommentInThread(current, id, body?.body, { identity: viewer, config: settings }, extra)
           ));
-          return json({ ok: true, comment: presentComment(doc.comments.find((item) => item.id === id), actor, settings) });
+          return json({ ok: true, comment: presentComment(doc.comments.find((item) => item.id === id), viewer, settings) });
         } catch (err) {
           return bad(err.message, err.status || 400);
         }
@@ -617,14 +617,14 @@ export async function onRequest(context) {
         const hint = threadQuery(url);
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
-        const actor = commentsActor(request, identity());
-        const allowed = commentPolicy("delete", { actor, comment: found.comment, settings });
+        const viewer = commentsIdentity(request, identity());
+        const allowed = commentPolicy("delete", { identity: viewer, comment: found.comment, config: settings });
         if (!allowed.ok) return bad(allowed.error, allowed.status);
         try {
-          const { doc } = await updateThread(bucket, found.comment.scope, found.comment.target_id, (current) => (
-            softDeleteCommentInThread(current, id, actor)
+          const { doc } = await updateThread({ bucket }, found.comment.scope, found.comment.target_id, (current) => (
+            softDeleteCommentInThread(current, id, { identity: viewer })
           ));
-          return json({ ok: true, comment: presentComment(doc.comments.find((item) => item.id === id), actor, settings) });
+          return json({ ok: true, comment: presentComment(doc.comments.find((item) => item.id === id), viewer, settings) });
         } catch (err) {
           return bad(err.message, err.status || 400);
         }
@@ -640,20 +640,20 @@ export async function onRequest(context) {
         const hint = threadQuery(url, body);
         const found = await findCommentLocation(bucket, id, hint.error ? null : { scope: hint.scope, target_id: hint.targetId });
         if (!found) return bad("not found", 404);
-        const actor = commentsActor(request, identity(), body);
-        const allowed = commentPolicy(action, { actor, comment: found.comment, settings });
+        const viewer = commentsIdentity(request, identity());
+        const allowed = commentPolicy(action, { identity: viewer, comment: found.comment, config: settings });
         if (!allowed.ok) return bad(allowed.error, allowed.status);
         try {
-          const { doc } = await updateThread(bucket, found.comment.scope, found.comment.target_id, (current) => {
-            if (action === "pin") return pinCommentInThread(current, id, actor);
+          const { doc } = await updateThread({ bucket }, found.comment.scope, found.comment.target_id, (current) => {
+            if (action === "pin") return pinCommentInThread(current, id, { identity: viewer });
             if (action === "unpin") return unpinCommentInThread(current, id);
             return reorderPinsInThread(current, body?.order);
           });
           return json({
             ok: true,
-            comment: presentComment(doc.comments.find((item) => item.id === id), actor, settings),
-            pins: pinnedComments(doc.comments).map((item) => presentComment(item, actor, settings)),
-            viewer: viewerFor(actor, settings),
+            comment: presentComment(doc.comments.find((item) => item.id === id), viewer, settings),
+            pins: pinnedComments(doc.comments).map((item) => presentComment(item, viewer, settings)),
+            viewer: viewerFor(viewer, settings),
           });
         } catch (err) {
           return bad(err.message, err.status || 400);

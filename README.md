@@ -242,6 +242,7 @@ site/                 what deploys — plain files, no build
   meetings/           one JSON per meeting + transcripts
 functions/            Pages Functions — AT THE PROJECT ROOT, see below
   api/                R2 file store, usage, feedback, notes, proposals, comments
+  _shared/hub-comments/  vendorable comments core (no Access or identity imports)
   mcp/                MCP server over Streamable HTTP
 scripts/
   init.mjs            first-run setup
@@ -487,11 +488,34 @@ no UI yet. One JSON document per `{scope, target_id}` lives at
 `comments/{scope}/{target_id}.json`. Writes are etag-conditional with a
 bounded retry. The file API refuses the `comments/` prefix.
 
+The store and policy live in `functions/_shared/hub-comments/`, a vendorable
+folder with no imports outside itself. Routes and identity glue stay in
+`functions/api/` and `functions/_shared/comments.js`. Callers inject
+`{ bucket, identity: { id, email, kind, via }, config: { admins, limits }, now }`.
+The same core is meant to land in compass-city-hub and kf-hub.
+
 Locked by Charlie Oct 19: agents may POST a comment (stored with
 `author_kind: "agent"`) but cannot pin, unpin, reorder or delete; pin/unpin/
 reorder are admin-only; delete is admin or the author, and person-only.
-Admins are the emails in `comments.admins`. List and pins responses include
-`author_kind`, `author_label`, an optional plain-text `quote` (max 500),
+`author_kind` is `"agent"` when `identity.kind !== "human"` or `via === "mcp"`.
+The stored comment keeps `via`. The API refuses pin, unpin, reorder and
+delete for `via=mcp` or a non-human kind.
+
+Admins are the emails (or `github:login` values) in `comments.admins`, merged
+with the server-side `HUB_ADMINS` env var (comma-separated). This is app
+config only; Access is unchanged. Document `HUB_ADMINS` in `wrangler.toml`
+`[vars]` if you use it.
+
+Bodies are 8000 characters by default. A pinned top-level comment may be up
+to 256 KiB so a long service note can migrate losslessly. A reply or
+unpinned comment over 8000 gets `413`. Each comment has `rev` (a per-comment
+revision string, `"1"` on create, seeded from the legacy etag on
+migration, bumped on a body edit), `edited_by` and `proposal_id` (nullable)
+so a later note proposal can target a pinned comment without a reply
+marking it superseded.
+
+List and pins responses include `author_kind`, `author_label`, `via`,
+`rev`, `edited_by`, `proposal_id`, an optional plain-text `quote` (max 500),
 and per-viewer `can_edit` / `can_delete` / `can_pin` plus
 `viewer: { can_pin, is_admin }` so a UI can hide menu items. The server
 still enforces the same rules.

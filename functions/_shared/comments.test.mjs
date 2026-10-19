@@ -6,6 +6,9 @@ import { dirname, join } from "node:path";
 
 import { memoryBucket } from "./memory-bucket.js";
 import {
+  COMMENT_BODY_MAX,
+  COMMENT_PINNED_BODY_MAX,
+  COMMENT_QUOTE_MAX,
   COMMENT_WRITE_RETRIES,
   addCommentToThread,
   buildComment,
@@ -14,11 +17,13 @@ import {
   cleanQuote,
   commentPolicy,
   commentsConfig,
+  commentsIdentity,
   commentsKey,
   describeActor,
   editCommentInThread,
   hasLegacyRepoKey,
   isCommentsStoreKey,
+  parseHubAdmins,
   parseHubConfigSource,
   pinCommentInThread,
   pinnedComments,
@@ -36,30 +41,66 @@ const NOW = new Date("2026-10-19T12:00:00.000Z");
 const PERSON = describeActor(true, "dev@example.com");
 const AGENT = describeActor(false, "bot@example.com", "Atlas Agent");
 const ADMIN = describeActor(true, "admin@example.com");
+const LIMITS = { body: COMMENT_BODY_MAX, pinnedBody: COMMENT_PINNED_BODY_MAX, quote: COMMENT_QUOTE_MAX };
 const SETTINGS = commentsConfig({ comments: { enabled: true, admins: ["admin@example.com"] } });
 
+function make(identity, input, rand = "aaaa1111") {
+  return buildComment({ scope: "home", target_id: "home", ...input }, { identity, config: SETTINGS, now: NOW, rand });
+}
+
 function topLevel(body = "Welcome home", extra = {}) {
-  return buildComment({ scope: "home", target_id: "home", body, ...extra }, PERSON, NOW, "aaaa1111");
+  return make(PERSON, { body, ...extra }, extra.rand || "aaaa1111");
 }
 
 test("commentsConfig is off until a human sets enabled, and admins are lowercased", () => {
-  assert.deepEqual(commentsConfig({}), { enabled: false, admins: [] });
+  assert.deepEqual(commentsConfig({}), { enabled: false, admins: [], limits: LIMITS });
   assert.deepEqual(commentsConfig({ comments: { enabled: false, admins: ["Admin@Example.com"] } }), {
     enabled: false,
     admins: ["admin@example.com"],
+    limits: LIMITS,
   });
   assert.equal(commentsConfig({ comments: { enabled: true } }).enabled, true);
 });
 
+test("commentsIdentity maps same-site browser writes to human/browser and headerless callers to agent/mcp", () => {
+  const browser = commentsIdentity(
+    new Request("https://hub.example/api/comments", { headers: { origin: "https://hub.example" } }),
+    "dev@example.com",
+  );
+  assert.equal(browser.kind, "human");
+  assert.equal(browser.via, "browser");
+  const mcp = commentsIdentity(
+    new Request("https://hub.example/api/comments"),
+    "dev@example.com",
+    { agentName: "Codex" },
+  );
+  assert.equal(mcp.kind, "agent");
+  assert.equal(mcp.via, "mcp");
+  assert.equal(mcp.label, "Codex");
+});
+
+test("HUB_ADMINS env values merge with config.comments.admins", () => {
+  assert.deepEqual(parseHubAdmins("Admin@Example.com, github:charlie, "), [
+    "admin@example.com",
+    "github:charlie",
+  ]);
+  const merged = commentsConfig(
+    { comments: { enabled: true, admins: ["admin@example.com"] } },
+    "ops@example.com, github:charlie",
+  );
+  assert.deepEqual(merged.admins, ["admin@example.com", "ops@example.com", "github:charlie"]);
+});
+
 test("parseHubConfigSource reads the tenant file's HUB_CONFIG assignment", () => {
   const config = parseHubConfigSource("globalThis.HUB_CONFIG = { comments: { enabled: true, admins: [\"a@b.com\"] } };");
-  assert.deepEqual(commentsConfig(config), { enabled: true, admins: ["a@b.com"] });
+  assert.deepEqual(commentsConfig(config).admins, ["a@b.com"]);
+  assert.equal(commentsConfig(config).enabled, true);
 });
 
 test("shipped hub.config.js keeps comments off and admins empty", () => {
   const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../site/hub.config.js"), "utf8");
   const config = parseHubConfigSource(source);
-  assert.deepEqual(commentsConfig(config), { enabled: false, admins: [] });
+  assert.deepEqual(commentsConfig(config), { enabled: false, admins: [], limits: LIMITS });
 });
 
 test("isCommentsStoreKey refuses the comments/ prefix the file API must not touch", () => {
@@ -69,18 +110,22 @@ test("isCommentsStoreKey refuses the comments/ prefix the file API must not touc
 });
 
 test("buildComment mints an id, takes author from the actor, and ignores a spoofed author", () => {
-  const comment = buildComment(
-    { scope: "page", target_id: "meetings.html", body: "  Keep clips only.  \n", author: "attacker@evil.example" },
-    PERSON,
-    NOW,
-    "abcd1234",
-  );
+  const comment = make(PERSON, {
+    scope: "page",
+    target_id: "meetings.html",
+    body: "  Keep clips only.  \n",
+    author: "attacker@evil.example",
+  }, "abcd1234");
   assert.equal(comment.id, "2026-10-19T12-00-00-000Z-abcd1234");
   assert.equal(comment.scope, "page");
   assert.equal(comment.target_id, "meetings");
   assert.equal(comment.author, "dev@example.com");
   assert.equal(comment.author_kind, "person");
+  assert.equal(comment.via, "browser");
   assert.equal(comment.body, "Keep clips only.");
+  assert.equal(comment.rev, "1");
+  assert.equal(comment.edited_by, null);
+  assert.equal(comment.proposal_id, null);
   assert.equal(comment.edited_at, null);
   assert.equal(comment.deleted_at, null);
   assert.equal(comment.pinned, false);
@@ -89,51 +134,35 @@ test("buildComment mints an id, takes author from the actor, and ignores a spoof
 });
 
 test("an agent comment stores author_kind agent plus the agent name, never a body author", () => {
-  const comment = buildComment(
-    { scope: "home", target_id: "index", body: "Posted by the bot", author: "spoof@evil.example", agent_name: "ignored" },
-    AGENT,
-    NOW,
-    "bot00001",
-  );
+  const comment = make(AGENT, {
+    body: "Posted by the bot",
+    author: "spoof@evil.example",
+  }, "bot00001");
   assert.equal(comment.author, "bot@example.com");
   assert.equal(comment.author_kind, "agent");
   assert.equal(comment.author_label, "Atlas Agent");
+  assert.equal(comment.via, "mcp");
   assert.equal(comment.target_id, "home");
 });
 
 test("replies go one level deep only", () => {
   const top = topLevel();
   const thread = addCommentToThread({ comments: [] }, top);
-  const reply = buildComment(
-    { scope: "home", target_id: "home", parent_id: top.id, body: "A reply" },
-    PERSON,
-    NOW,
-    "bbbb2222",
-  );
+  const reply = make(PERSON, { parent_id: top.id, body: "A reply" }, "bbbb2222");
   const withReply = addCommentToThread(thread, reply);
   assert.equal(withReply.comments[1].parent_id, top.id);
 
-  const nested = buildComment(
-    { scope: "home", target_id: "home", parent_id: reply.id, body: "too deep" },
-    PERSON,
-    NOW,
-    "cccc3333",
-  );
+  const nested = make(PERSON, { parent_id: reply.id, body: "too deep" }, "cccc3333");
   assert.throws(() => addCommentToThread(withReply, nested), /one level deep only/);
   assert.throws(
-    () => addCommentToThread(thread, buildComment(
-      { scope: "home", target_id: "home", parent_id: "missing", body: "x" },
-      PERSON,
-      NOW,
-      "dddd4444",
-    )),
+    () => addCommentToThread(thread, make(PERSON, { parent_id: "missing", body: "x" }, "dddd4444")),
     /parent comment not found/,
   );
 });
 
 test("soft delete hides the body but keeps the record", () => {
   const top = topLevel("Secret note");
-  const deleted = softDeleteCommentInThread({ comments: [top] }, top.id, PERSON, NOW);
+  const deleted = softDeleteCommentInThread({ comments: [top] }, top.id, { identity: PERSON, now: NOW });
   assert.equal(deleted.comments[0].body, "Secret note");
   assert.equal(deleted.comments[0].deleted_at, NOW.toISOString());
   assert.equal(deleted.comments[0].deleted_by, PERSON.email);
@@ -143,19 +172,14 @@ test("soft delete hides the body but keeps the record", () => {
 
 test("pins are per thread and top-level only, ordered by pin_order", () => {
   const a = topLevel("First");
-  const b = buildComment({ scope: "home", target_id: "home", body: "Second" }, PERSON, NOW, "bbbb2222");
-  const reply = buildComment(
-    { scope: "home", target_id: "home", parent_id: a.id, body: "reply" },
-    PERSON,
-    NOW,
-    "cccc3333",
-  );
+  const b = make(PERSON, { body: "Second" }, "bbbb2222");
+  const reply = make(PERSON, { parent_id: a.id, body: "reply" }, "cccc3333");
   let doc = { comments: [a, b, reply] };
-  doc = pinCommentInThread(doc, a.id, ADMIN, NOW);
-  doc = pinCommentInThread(doc, b.id, ADMIN, NOW);
+  doc = pinCommentInThread(doc, a.id, { identity: ADMIN, now: NOW });
+  doc = pinCommentInThread(doc, b.id, { identity: ADMIN, now: NOW });
   assert.equal(doc.comments[0].pin_order, 0);
   assert.equal(doc.comments[1].pin_order, 1);
-  assert.throws(() => pinCommentInThread(doc, reply.id, ADMIN, NOW), /top-level/);
+  assert.throws(() => pinCommentInThread(doc, reply.id, { identity: ADMIN, now: NOW }), /top-level/);
 
   doc = reorderPinsInThread(doc, [b.id, a.id]);
   assert.deepEqual(pinnedComments(doc.comments).map((item) => item.id), [b.id, a.id]);
@@ -170,9 +194,9 @@ test("pins are per thread and top-level only, ordered by pin_order", () => {
 
 test("locked by Charlie Oct 19: agents may create and cannot pin, unpin, reorder or delete", () => {
   const comment = topLevel();
-  assert.equal(commentPolicy("create", { actor: AGENT, settings: SETTINGS }).ok, true);
+  assert.equal(commentPolicy("create", { identity: AGENT, config: SETTINGS }).ok, true);
   for (const action of ["pin", "unpin", "reorder", "delete"]) {
-    const decision = commentPolicy(action, { actor: AGENT, comment, settings: SETTINGS });
+    const decision = commentPolicy(action, { identity: AGENT, comment, config: SETTINGS });
     assert.equal(decision.ok, false, action);
     assert.equal(decision.status, 403, action);
     assert.match(decision.error, /person/, action);
@@ -182,29 +206,42 @@ test("locked by Charlie Oct 19: agents may create and cannot pin, unpin, reorder
 test("locked by Charlie Oct 19: pin, unpin and reorder are admin-only", () => {
   const comment = topLevel();
   for (const action of ["pin", "unpin", "reorder"]) {
-    const person = commentPolicy(action, { actor: PERSON, comment, settings: SETTINGS });
+    const person = commentPolicy(action, { identity: PERSON, comment, config: SETTINGS });
     assert.equal(person.ok, false, action);
     assert.match(person.error, /admin/, action);
-    assert.equal(commentPolicy(action, { actor: ADMIN, comment, settings: SETTINGS }).ok, true, action);
+    assert.equal(commentPolicy(action, { identity: ADMIN, comment, config: SETTINGS }).ok, true, action);
   }
 });
 
 test("locked by Charlie Oct 19: delete is admin or the comment author, and person-only", () => {
   const comment = topLevel();
-  assert.equal(commentPolicy("delete", { actor: PERSON, comment, settings: SETTINGS }).ok, true);
-  assert.equal(commentPolicy("delete", { actor: ADMIN, comment, settings: SETTINGS }).ok, true);
+  assert.equal(commentPolicy("delete", { identity: PERSON, comment, config: SETTINGS }).ok, true);
+  assert.equal(commentPolicy("delete", { identity: ADMIN, comment, config: SETTINGS }).ok, true);
   const other = describeActor(true, "other@example.com");
-  assert.equal(commentPolicy("delete", { actor: other, comment, settings: SETTINGS }).ok, false);
-  assert.equal(commentPolicy("delete", { actor: AGENT, comment, settings: SETTINGS }).ok, false);
+  assert.equal(commentPolicy("delete", { identity: other, comment, config: SETTINGS }).ok, false);
+  assert.equal(commentPolicy("delete", { identity: AGENT, comment, config: SETTINGS }).ok, false);
+});
+
+test("via=mcp or a non-human kind cannot pin, unpin, reorder or delete", () => {
+  const comment = topLevel();
+  const mcpHuman = { id: "dev@example.com", email: "dev@example.com", kind: "human", via: "mcp" };
+  const service = { id: "github:bot", email: "", kind: "agent", via: "api" };
+  for (const identity of [mcpHuman, service]) {
+    for (const action of ["pin", "unpin", "reorder", "delete"]) {
+      assert.equal(commentPolicy(action, { identity, comment, config: SETTINGS }).ok, false, `${identity.via}:${action}`);
+    }
+  }
 });
 
 test("edit is author-only; a spoofed author on the body is not consulted", () => {
   const comment = topLevel();
-  assert.equal(commentPolicy("edit", { actor: PERSON, comment, settings: SETTINGS }).ok, true);
-  assert.equal(commentPolicy("edit", { actor: ADMIN, comment, settings: SETTINGS }).ok, false);
-  const edited = editCommentInThread({ comments: [comment] }, comment.id, "Updated", NOW);
+  assert.equal(commentPolicy("edit", { identity: PERSON, comment, config: SETTINGS }).ok, true);
+  assert.equal(commentPolicy("edit", { identity: ADMIN, comment, config: SETTINGS }).ok, false);
+  const edited = editCommentInThread({ comments: [comment] }, comment.id, "Updated", { identity: PERSON, config: SETTINGS, now: NOW });
   assert.equal(edited.comments[0].body, "Updated");
   assert.equal(edited.comments[0].edited_at, NOW.toISOString());
+  assert.equal(edited.comments[0].edited_by, PERSON.email);
+  assert.equal(edited.comments[0].rev, "2");
 });
 
 test("etag conflict retries and then surfaces 409", async () => {
@@ -225,7 +262,7 @@ test("etag conflict retries and then surfaces 409", async () => {
     },
   };
   const comment = topLevel();
-  const result = await updateThread(bucket, "home", "home", (doc) => addCommentToThread(doc, comment));
+  const result = await updateThread({ bucket }, "home", "home", (doc) => addCommentToThread(doc, comment));
   assert.equal(result.doc.comments.length, 1);
   assert.equal(puts, 3);
 
@@ -239,16 +276,16 @@ test("etag conflict retries and then surfaces 409", async () => {
       return null;
     },
   };
-  await assert.rejects(() => updateThread(stubborn, "home", "home", (doc) => doc), { status: 409, message: /conflict/ });
+  await assert.rejects(() => updateThread({ bucket: stubborn }, "home", "home", (doc) => doc), { status: 409, message: /conflict/ });
   assert.equal(puts, COMMENT_WRITE_RETRIES);
 });
 
 test("memory bucket onlyIf matches the etag retry path", async () => {
   const bucket = memoryBucket();
-  const first = await updateThread(bucket, "page", "guide", (doc) => addCommentToThread(doc, topLevel("one")));
+  const first = await updateThread({ bucket }, "page", "guide", (doc) => addCommentToThread(doc, topLevel("one")));
   assert.equal(first.doc.comments.length, 1);
-  const other = buildComment({ scope: "page", target_id: "guide", body: "two" }, PERSON, NOW, "zzzz9999");
-  const second = await updateThread(bucket, "page", "guide", (doc) => addCommentToThread(doc, other));
+  const other = make(PERSON, { scope: "page", target_id: "guide", body: "two" }, "zzzz9999");
+  const second = await updateThread({ bucket }, "page", "guide", (doc) => addCommentToThread(doc, other));
   assert.equal(second.doc.comments.length, 2);
 });
 
@@ -265,24 +302,14 @@ test("quote is optional plain text, capped at 500, with tags stripped", () => {
   assert.equal(cleanQuote("  selected line  "), "selected line");
   assert.equal(cleanQuote("<em>hello</em> world"), "hello world");
   assert.equal(cleanQuote("x".repeat(600)).length, 500);
-  const comment = buildComment(
-    { scope: "home", target_id: "home", body: "about this", quote: "<b>Welcome home</b>" },
-    PERSON,
-    NOW,
-    "quot0001",
-  );
+  const comment = make(PERSON, { body: "about this", quote: "<b>Welcome home</b>" }, "quot0001");
   assert.equal(comment.quote, "Welcome home");
   assert.equal(presentComment(comment).quote, "Welcome home");
 });
 
 test("per-viewer capabilities come from commentPolicy", () => {
   const comment = topLevel();
-  const reply = buildComment(
-    { scope: "home", target_id: "home", parent_id: comment.id, body: "reply" },
-    PERSON,
-    NOW,
-    "repl0001",
-  );
+  const reply = make(PERSON, { parent_id: comment.id, body: "reply" }, "repl0001");
   assert.deepEqual(capabilitiesFor(comment, PERSON, SETTINGS), {
     can_edit: true,
     can_delete: true,
@@ -311,7 +338,7 @@ test("per-viewer capabilities come from commentPolicy", () => {
   assert.equal(shown.can_pin, false);
 });
 
-test("migrated comments keep a byte-identical body and a legacy key", () => {
+test("migrated comments keep a byte-identical body, a legacy key and a seeded rev", () => {
   const body = "Welcome home\nKeep this newline.\n";
   assert.equal(preserveBody(body), body);
   const comment = buildMigratedComment({
@@ -323,11 +350,12 @@ test("migrated comments keep a byte-identical body and a legacy key", () => {
     pinned: true,
     pin_order: 0,
     repo_key: "notes/pages/index.json",
-    etag_or_updatedAt: "2026-10-01T00:00:00.000Z",
-  }, NOW, "mig00001");
+    etag_or_updatedAt: "etag-from-note",
+  }, { now: NOW, rand: "mig00001", config: SETTINGS });
   assert.equal(comment.body, body);
   assert.equal(comment.pinned, true);
   assert.equal(comment.legacy.repo_key, "notes/pages/index.json");
+  assert.equal(comment.rev, "etag-from-note");
   assert.equal(hasLegacyRepoKey({ comments: [comment] }, "notes/pages/index.json"), true);
   assert.equal(hasLegacyRepoKey({ comments: [comment] }, "notes/pages/other.json"), false);
 });
