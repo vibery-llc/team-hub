@@ -89,6 +89,7 @@ import {
   pinnedComments,
   presentComment,
   readThread,
+  viewerFor,
   reorderPinsInThread,
   softDeleteCommentInThread,
   sortThreadComments,
@@ -538,22 +539,26 @@ export async function onRequest(context) {
       if (route === "comments" && method === "GET") {
         const loc = threadQuery(url);
         if (loc.error) return bad(loc.error);
+        const actor = commentsActor(request, identity());
         const { doc } = await readThread(bucket, loc.scope, loc.targetId);
         return json({
           scope: loc.scope,
           target_id: loc.targetId,
-          comments: sortThreadComments(doc.comments).map(presentComment),
+          viewer: viewerFor(actor, settings),
+          comments: sortThreadComments(doc.comments).map((item) => presentComment(item, actor, settings)),
         });
       }
 
       if (route === "comments/pins" && method === "GET") {
         const loc = threadQuery(url);
         if (loc.error) return bad(loc.error);
+        const actor = commentsActor(request, identity());
         const { doc } = await readThread(bucket, loc.scope, loc.targetId);
         return json({
           scope: loc.scope,
           target_id: loc.targetId,
-          pins: pinnedComments(doc.comments).map(presentComment),
+          viewer: viewerFor(actor, settings),
+          pins: pinnedComments(doc.comments).map((item) => presentComment(item, actor, settings)),
         });
       }
 
@@ -573,7 +578,7 @@ export async function onRequest(context) {
             addCommentToThread(current, comment)
           ));
           const stored = doc.comments.find((item) => item.id === comment.id);
-          return json({ ok: true, comment: presentComment(stored) }, 201);
+          return json({ ok: true, comment: presentComment(stored, actor, settings) }, 201);
         } catch (err) {
           return bad(err.message, err.status || 400);
         }
@@ -596,10 +601,11 @@ export async function onRequest(context) {
         const allowed = commentPolicy("edit", { actor, comment: found.comment, settings });
         if (!allowed.ok) return bad(allowed.error, allowed.status);
         try {
+          const extra = Object.hasOwn(body || {}, "quote") ? { quote: body.quote } : {};
           const { doc } = await updateThread(bucket, found.comment.scope, found.comment.target_id, (current) => (
-            editCommentInThread(current, id, body?.body)
+            editCommentInThread(current, id, body?.body, new Date(), extra)
           ));
-          return json({ ok: true, comment: presentComment(doc.comments.find((item) => item.id === id)) });
+          return json({ ok: true, comment: presentComment(doc.comments.find((item) => item.id === id), actor, settings) });
         } catch (err) {
           return bad(err.message, err.status || 400);
         }
@@ -618,7 +624,7 @@ export async function onRequest(context) {
           const { doc } = await updateThread(bucket, found.comment.scope, found.comment.target_id, (current) => (
             softDeleteCommentInThread(current, id, actor)
           ));
-          return json({ ok: true, comment: presentComment(doc.comments.find((item) => item.id === id)) });
+          return json({ ok: true, comment: presentComment(doc.comments.find((item) => item.id === id), actor, settings) });
         } catch (err) {
           return bad(err.message, err.status || 400);
         }
@@ -645,8 +651,9 @@ export async function onRequest(context) {
           });
           return json({
             ok: true,
-            comment: presentComment(doc.comments.find((item) => item.id === id)),
-            pins: pinnedComments(doc.comments).map(presentComment),
+            comment: presentComment(doc.comments.find((item) => item.id === id), actor, settings),
+            pins: pinnedComments(doc.comments).map((item) => presentComment(item, actor, settings)),
+            viewer: viewerFor(actor, settings),
           });
         } catch (err) {
           return bad(err.message, err.status || 400);

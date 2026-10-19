@@ -175,7 +175,7 @@ globalThis.HUB_CONFIG = {
      can be pinned (for example a Welcome home note on the homepage). Off
      until a human sets enabled: true. Agents must not turn this on.
 
-     Proposed defaults, pending Charlie:
+     Locked by Charlie Oct 19:
        agents may post (stored with author_kind "agent") but cannot pin,
        unpin, reorder or delete;
        pin, unpin and reorder are admin-only;

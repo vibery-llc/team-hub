@@ -6,9 +6,8 @@
  * etag-conditional with a bounded retry so two people commenting on the
  * same thread do not silently clobber each other.
  *
- * Who may pin or delete is still an open Charlie question. The proposed
- * defaults live in `commentPolicy` and `site/hub.config.js` `comments.admins`
- * so they can change in one place.
+ * Policy locked by Charlie Oct 19. The rules live in `commentPolicy` and
+ * `site/hub.config.js` `comments.admins` so they stay in one place.
  */
 
 import { cleanBody, cleanId, cleanLine, newId } from "./collaborate.js";
@@ -16,6 +15,7 @@ import { cleanBody, cleanId, cleanLine, newId } from "./collaborate.js";
 export const COMMENTS_PREFIX = "comments/";
 export const COMMENT_SCOPES = ["page", "service", "home"];
 export const COMMENT_BODY_MAX = 8000;
+export const COMMENT_QUOTE_MAX = 500;
 export const COMMENT_WRITE_RETRIES = 3;
 
 const TARGET_RE = /^[a-z0-9][a-z0-9._-]*$/;
@@ -77,7 +77,7 @@ export function describeActor(isPerson, identity, agentName = "") {
   return { kind: "agent", email, label: cleanLine(agentName, 80) };
 }
 
-function isAdmin(actor, settings) {
+export function isAdmin(actor, settings) {
   const email = String(actor?.email || "").trim().toLowerCase();
   return Boolean(email && settings?.admins?.includes(email));
 }
@@ -89,13 +89,15 @@ function sameAuthor(actor, comment) {
 }
 
 /**
- * Proposed defaults, pending Charlie. Change this function (and comments.admins)
+ * Locked by Charlie Oct 19. Change this function (and comments.admins)
  * rather than scattering pin/delete rules across routes.
  *
  *   1. Agents/MCP may post a comment, stored with author_kind "agent".
- *      They can never pin, unpin, reorder or delete.
+ *      They can never pin, unpin, reorder or delete. There is no proposed
+ *      flag: agents post directly.
  *   2. Pin, unpin and reorder are admin-only. Delete is admin or the
  *      comment's own author. Both are person-only.
+ *   3. A long service note becomes one pinned top-level comment.
  */
 export function commentPolicy(action, { actor, comment, settings }) {
   if (!settings?.enabled) return { ok: false, status: 404, error: "not found" };
@@ -135,10 +137,47 @@ export function commentPolicy(action, { actor, comment, settings }) {
   return { ok: false, status: 400, error: `unknown action ${action}` };
 }
 
-export function presentComment(comment) {
+/** Select-text quote: plain text only, never treated as HTML. */
+export function cleanQuote(raw) {
+  if (raw == null || raw === "") return null;
+  let text = String(raw).replace(/<[^>]*>/g, "");
+  text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!text) return null;
+  return text.slice(0, COMMENT_QUOTE_MAX);
+}
+
+export function viewerFor(actor, settings) {
+  return {
+    can_pin: commentPolicy("pin", { actor, comment: { id: "viewer" }, settings }).ok,
+    is_admin: isAdmin(actor, settings),
+  };
+}
+
+export function capabilitiesFor(comment, actor, settings) {
+  const pinnable = Boolean(comment && !comment.parent_id && !comment.deleted_at);
+  return {
+    can_edit: commentPolicy("edit", { actor, comment, settings }).ok,
+    can_delete: commentPolicy("delete", { actor, comment, settings }).ok,
+    can_pin: pinnable && commentPolicy("pin", { actor, comment, settings }).ok,
+  };
+}
+
+export function presentComment(comment, actor, settings) {
   if (!comment) return comment;
-  if (!comment.deleted_at) return comment;
-  return { ...comment, body: "" };
+  const shown = {
+    ...comment,
+    body: comment.deleted_at ? "" : comment.body,
+    author_kind: comment.author_kind === "agent" ? "agent" : "person",
+    author_label: comment.author_label || "",
+    quote: comment.quote || null,
+  };
+  if (actor && settings) {
+    const caps = capabilitiesFor(comment, actor, settings);
+    shown.can_edit = caps.can_edit;
+    shown.can_delete = caps.can_delete;
+    shown.can_pin = caps.can_pin;
+  }
+  return shown;
 }
 
 function parentOf(doc, parentId) {
@@ -170,6 +209,7 @@ function commentFields({
   pinnedBy = null,
   pinOrder = null,
   runOfShowItem = null,
+  quote = null,
   legacy = null,
 }) {
   return {
@@ -181,6 +221,7 @@ function commentFields({
     author_kind: authorKind,
     author_label: authorLabel || "",
     body,
+    quote,
     created_at: createdAt,
     edited_at: editedAt,
     deleted_at: deletedAt,
@@ -214,6 +255,7 @@ export function buildComment(input, actor, now = new Date(), rand = "") {
     authorKind: actor.kind === "agent" ? "agent" : "person",
     authorLabel: actor.kind === "agent" ? (actor.label || "") : "",
     body,
+    quote: cleanQuote(input?.quote),
     createdAt: now.toISOString(),
     runOfShowItem,
     legacy: null,
@@ -263,12 +305,14 @@ export function addCommentToThread(doc, comment) {
   return thread;
 }
 
-export function editCommentInThread(doc, id, body, now = new Date()) {
+export function editCommentInThread(doc, id, body, now = new Date(), extra = {}) {
   const text = cleanBody(body, COMMENT_BODY_MAX);
   if (!text) throw new Error("body is required");
   return mapComment(doc, id, (comment) => {
     if (comment.deleted_at) throw new Error("deleted comments cannot be edited");
-    return { ...comment, body: text, edited_at: now.toISOString() };
+    const next = { ...comment, body: text, edited_at: now.toISOString() };
+    if (Object.hasOwn(extra, "quote")) next.quote = cleanQuote(extra.quote);
+    return next;
   });
 }
 

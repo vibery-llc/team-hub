@@ -487,10 +487,14 @@ no UI yet. One JSON document per `{scope, target_id}` lives at
 `comments/{scope}/{target_id}.json`. Writes are etag-conditional with a
 bounded retry. The file API refuses the `comments/` prefix.
 
-Proposed defaults, pending Charlie: agents may POST a comment (stored with
+Locked by Charlie Oct 19: agents may POST a comment (stored with
 `author_kind: "agent"`) but cannot pin, unpin, reorder or delete; pin/unpin/
 reorder are admin-only; delete is admin or the author, and person-only.
-Admins are the emails in `comments.admins`.
+Admins are the emails in `comments.admins`. List and pins responses include
+`author_kind`, `author_label`, an optional plain-text `quote` (max 500),
+and per-viewer `can_edit` / `can_delete` / `can_pin` plus
+`viewer: { can_pin, is_admin }` so a UI can hide menu items. The server
+still enforces the same rules.
 
 To preview mapping today's page notes onto that store:
 
