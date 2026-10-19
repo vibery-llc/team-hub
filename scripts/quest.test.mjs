@@ -51,3 +51,14 @@ test('shipped local instruction anchors resolve to existing setup and guide sect
     assert.ok(page.includes('id="'+match[2]+'"'),link.href);
   }
 });
+test('a hashless resume records the shown step so Back returns to it', () => {
+  assert.equal(model.resumeHash('','make',settings),'#make');
+  assert.equal(model.resumeHash('#','setup',settings),'#setup');
+  assert.equal(model.resumeHash('#read','read',settings),null);
+  assert.equal(model.resumeHash('','gone',settings),null);
+});
+test('finishing the quest opens the overview only when it is enabled', () => {
+  const overview = c.HubOverview.config;
+  assert.equal(model.finishHref(overview(c.HUB_CONFIG.overview).enabled),'overview.html');
+  for (const input of [undefined,{enabled:false},{}]) assert.equal(model.finishHref(overview(input).enabled),'index.html?view=dashboard');
+});

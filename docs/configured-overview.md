@@ -1,6 +1,6 @@
-# Configured overview and guided setup — draft
+# Configured overview and guided setup
 
-This branch is for upstream review only. It does not migrate existing tenants, change authentication, or deploy anything. The overview and guided journal/map now share configuration and navigation. Maintainers still need to review the new-clone defaults before merge.
+Both features are opt-in. They do not migrate existing tenants or change authentication or deployment. The overview and guided journal/map share configuration and navigation.
 
 ## Compatibility
 
@@ -18,7 +18,7 @@ The work document has `example`, `checkedAt` (ISO timestamp), and `items` contai
 
 Configure `title`, `description`, `helperName`, positive integer `version`, and steps with stable unique `id`, `short`, `title`, `action`, `body`, `instructions` (plain-text array), `links` (label/href), `check`, `proof`, `reinforcement`, and optional `selectAgent`. IDs contain lowercase letters, digits and hyphens, starting with a letter/digit (maximum 64 characters). Configured copy is rendered literally, never as HTML. The helper is explicitly scripted; no chat integration is claimed.
 
-Personal notes live only in `teamhub.quest.<id>.v<version>` in localStorage. Keep IDs stable when rewording a step; increment the version for an intentional reset. Stale/duplicate/unknown reported steps are pruned. Both views support hash navigation, browser Back, reload/resume, idempotent reporting, and inline-confirmed reset of only this key. Blocked storage falls back to visit-only state with an explanation. Existing agent choice remains shared with setup. These reports never verify access, builds, delivery status or human acceptance.
+Personal notes live only in `teamhub.quest.<id>.v<version>` in localStorage. Keep IDs stable when rewording a step; increment the version for an intentional reset. Stale/duplicate/unknown reported steps are pruned. Finishing the last step opens overview.html when the overview is enabled and the dashboard otherwise. Both views support hash navigation, browser Back, reload/resume, idempotent reporting, and inline-confirmed reset of only this key. Blocked storage falls back to visit-only state with an explanation. Existing agent choice remains shared with setup. These reports never verify access, builds, delivery status or human acceptance.
 
 ## Validation (2026-10-01)
 
@@ -32,5 +32,3 @@ Personal notes live only in `teamhub.quest.<id>.v<version>` in localStorage. Kee
 - Light and dark visual review. Overview dark screenshots use a fixture that activates the existing dark CSS media rules without changing the OS theme. Journal dark uses its appearance control. Secondary text contrast was corrected on these new surfaces. This is a targeted keyboard/visual check, not a comprehensive screen-reader audit.
 
 Screenshots are under `docs/screenshots/`. Run `python3 scripts/fixtures/overview-preview.py` for loopback-only fixtures at port 8104; `/fixture/<case>/overview.html` and `/fixture/<case>/start.html` expose the cases documented in that script. The fixture is never part of the deployed site.
-
-No upstream merge, deploy, or global rollout is authorized by this draft.

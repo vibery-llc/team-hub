@@ -10,6 +10,8 @@
   let writable = true;
   try { state = model.parse(localStorage.getItem(settings.key), settings); } catch { writable = false; }
   state.step = model.fromHash(location.hash, settings) || state.step;
+  const resumed = model.resumeHash(location.hash, state.step, settings);
+  if (resumed) history.replaceState(null, '', location.pathname + location.search + resumed);
   const agentNames = { codex: 'Codex', claude: 'Claude Code', cursor: 'Cursor', other: 'Another agent' };
   const save = () => {
     try { localStorage.setItem(settings.key, JSON.stringify(state)); writable = true; }
@@ -88,7 +90,7 @@
     if (!writable) $('#storage-note').textContent = 'This browser cannot save quest notes. You can still explore; your place may be lost when you leave.';
   }
   const next = () => {
-    if (index() === steps.length - 1) location.href = 'overview.html';
+    if (index() === steps.length - 1) location.href = model.finishHref(globalThis.HubOverview.config(globalThis.HUB_CONFIG?.overview).enabled);
     else move(steps[index() + 1].id);
   };
   $('#quest-unavailable').hidden = true; $('#quest-body').hidden = false; $('#quest-footer').hidden = false;

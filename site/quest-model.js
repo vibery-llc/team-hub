@@ -27,5 +27,10 @@
   }
   const report = (state, id, checked, settings) => ({...state,reported:settings.ids.filter(candidate => candidate === id ? Boolean(checked) : state.reported.includes(candidate))});
   const fromHash = (hash, settings) => settings.ids.includes(hash.replace(/^#/,'')) ? hash.replace(/^#/,'') : null;
-  globalThis.HubQuest = {config,initial,parse,report,fromHash};
+  // A hashless first visit that resumes a saved step records that step in the
+  // current history entry, so Back after advancing returns to what was shown.
+  const resumeHash = (hash, step, settings) => (hash === '' || hash === '#') && settings.ids.includes(step) ? '#' + step : null;
+  // The last step leads to the overview only when the tenant enabled it.
+  const finishHref = overviewEnabled => overviewEnabled === true ? 'overview.html' : 'index.html?view=dashboard';
+  globalThis.HubQuest = {config,initial,parse,report,fromHash,resumeHash,finishHref};
 })();
